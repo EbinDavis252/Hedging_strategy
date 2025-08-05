@@ -101,8 +101,6 @@ def calculate_portfolio_beta(portfolio_securities, index_df):
 # --- Analyst Commentary & Report Generation ---
 def generate_analyst_commentary(security_data):
     """Generates a dynamic analysis for a single security."""
-    # This function remains largely the same as before, providing detailed single-asset analysis.
-    # [Previous implementation of this function is retained here for brevity]
     is_index = 'Index' in security_data['name']
     df = security_data['df']
     info = security_data['info']
@@ -120,67 +118,56 @@ def generate_analyst_commentary(security_data):
     return {"trend_view": trend_view, "rsi_view": rsi_view, "final_take": final_take, "strategy": strategy, "overall_sentiment": sentiment}
 
 def generate_strategy_report(portfolio_value, beta, hedge_params):
-    """Generates a full report for the cross-hedging strategy."""
-    report = f"""
-    <div class="card">
-        <h3>📝 Hedging Strategy Report</h3>
-        <p><i>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i></p>
-        <hr>
+    """Renders a full report for the cross-hedging strategy using Streamlit components."""
+    st.header("📝 Hedging Strategy Report")
+    st.caption(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    st.markdown("---")
 
-        <div class="report-section">
-            <h4>1. Portfolio Overview</h4>
-            <ul>
-                <li><b>Total Stock Portfolio Value:</b> ₹{portfolio_value:,.2f}</li>
-                <li><b>Hedging Instrument:</b> Nifty Auto Index Options</li>
-            </ul>
-        </div>
+    # --- Section 1: Portfolio Overview ---
+    st.subheader("1. Portfolio Overview & Risk Analysis")
+    col1, col2 = st.columns(2)
+    col1.metric("Total Stock Portfolio Value", f"₹{portfolio_value:,.2f}")
+    col2.metric("Portfolio Beta (vs. Nifty Auto)", f"{beta:.2f}", help="For every 1% change in the Nifty Auto Index, your portfolio is expected to change by this percentage.")
+    
+    st.markdown("---")
 
-        <div class="report-section">
-            <h4>2. Risk Analysis: Portfolio Beta</h4>
-            <p>The calculated Beta of your portfolio with respect to the Nifty Auto Index is <b>{beta:.2f}</b>.</p>
-            <ul>
-                <li><b>Interpretation:</b> For every 1% change in the Nifty Auto Index, your portfolio is expected to change by approximately <b>{beta:.2f}%</b> in the same direction.</li>
-                <li><b>Implication:</b> A Beta greater than 1 indicates your portfolio is more volatile than the index, while less than 1 means it's less volatile. This Beta is the cornerstone of our cross-hedging calculation.</li>
-            </ul>
-        </div>
+    # --- Section 2: Strategy Comparison ---
+    st.subheader("2. Strategy Comparison: 1-Month vs. 2-Month Contracts")
+    col1, col2 = st.columns(2)
+    with col1:
+        with st.container(border=True):
+            st.markdown("<h5>Short-Term Hedge (1 Month)</h5>", unsafe_allow_html=True)
+            st.metric("Strike Price", f"{hedge_params['k1']:,.2f}")
+            st.metric("Total Premium (Cost)", f"₹{hedge_params['cost1']:,.2f}")
+            with st.expander("Pros & Cons"):
+                st.success("**Pros:** Lower upfront cost, ideal for hedging against specific short-term events.")
+                st.error("**Cons:** Protection is short-lived. Time decay is rapid.")
 
-        <div class="report-section">
-            <h4>3. Strategy Comparison: 1-Month vs. 2-Month Contracts</h4>
-            <p>Below is a comparison of hedging with short-term vs. medium-term options.</p>
-            <div style="display: flex; gap: 20px;">
-                <div style="flex: 1; padding: 15px; background-color: #F8F9F9; border-radius: 8px;">
-                    <h5>Short-Term Hedge (1 Month)</h5>
-                    <ul>
-                        <li><b>Strike Price:</b> {hedge_params['k1']:,.2f}</li>
-                        <li><b>Total Premium (Cost):</b> ₹{hedge_params['cost1']:,.2f}</li>
-                        <li><b>Pros:</b> Lower upfront cost, ideal for hedging against specific short-term events (e.g., earnings, policy announcements).</li>
-                        <li><b>Cons:</b> Protection is short-lived. If the downturn doesn't happen within the month, the premium is lost (time decay is rapid).</li>
-                    </ul>
-                </div>
-                <div style="flex: 1; padding: 15px; background-color: #F8F9F9; border-radius: 8px;">
-                    <h5>Medium-Term Hedge (2 Months)</h5>
-                    <ul>
-                        <li><b>Strike Price:</b> {hedge_params['k2']:,.2f}</li>
-                        <li><b>Total Premium (Cost):</b> ₹{hedge_params['cost2']:,.2f}</li>
-                        <li><b>Pros:</b> Provides protection for a longer duration, suitable for hedging against broader market trends or prolonged uncertainty.</li>
-                        <li><b>Cons:</b> Higher premium cost, which will be a larger drag on profits if the market moves up instead of down.</li>
-                    </ul>
-                </div>
-            </div>
+    with col2:
+        with st.container(border=True):
+            st.markdown("<h5>Medium-Term Hedge (2 Months)</h5>", unsafe_allow_html=True)
+            st.metric("Strike Price", f"{hedge_params['k2']:,.2f}")
+            st.metric("Total Premium (Cost)", f"₹{hedge_params['cost2']:,.2f}")
+            with st.expander("Pros & Cons"):
+                st.success("**Pros:** Longer protection, suitable for broader market trends or prolonged uncertainty.")
+                st.error("**Cons:** Higher premium cost, which is a larger drag on profits if the market rises.")
+
+    st.markdown("---")
+
+    # --- Section 3: Final Recommendation ---
+    st.subheader("3. Final Recommendation")
+    with st.container():
+        st.markdown("""
+        <div class="recommendation-card">
+            <h5>Analyst's Take</h5>
+            <p><b>For a Bearish or Mixed Outlook:</b> A <b>2-Month contract</b> is generally more prudent. It provides a longer window of protection against a potential sustained downtrend or volatility, justifying the higher premium.</p>
+            <p><b>For a Bullish Outlook:</b> A <b>1-Month contract</b> may be sufficient. It acts as a cheaper "catastrophe insurance" against an unexpected, sharp, but short-lived correction, without sacrificing too much upside to high premium costs.</p>
+            <hr>
+            <p><b>Conclusion:</b> Your choice should align with your market view. If you anticipate prolonged weakness, choose the longer duration. If you are generally optimistic but want to guard against a sudden shock, the shorter, cheaper option is more logical.</p>
         </div>
-        
-        <div class="report-section">
-            <h4>4. Final Recommendation</h4>
-            <div class="recommendation-card">
-                <h5>Analyst's Take</h5>
-                <p><b>For a Bearish or Mixed Outlook:</b> A **2-Month contract** is generally more prudent. It provides a longer window of protection against a potential sustained downtrend or volatility, justifying the higher premium.</p>
-                <p><b>For a Bullish Outlook:</b> A **1-Month contract** may be sufficient. It acts as a cheaper "catastrophe insurance" against an unexpected, sharp, but short-lived correction, without sacrificing too much upside to high premium costs.</p>
-                <p><b>Conclusion:</b> Your choice should align with your market view. If you anticipate prolonged weakness, choose the longer duration. If you are generally optimistic but want to guard against a sudden shock, the shorter, cheaper option is more logical.</p>
-            </div>
-        </div>
-    </div>
-    """
-    return report
+        """, unsafe_allow_html=True)
+
 
 # --- UI Rendering Functions ---
 def render_payoff_chart(price_range, pnl, hedged_pnl, title, xaxis_title, legend_pnl, legend_hedged):
@@ -273,33 +260,31 @@ if market_data is not None:
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown("##### 1-Month Contract")
-                k1 = st.number_input("Strike Price (1-Mo)", value=float(round(nifty_auto_data['latest_price'] * 0.98, -2)), step=50.0)
-                p1 = st.number_input("Premium (1-Mo)", value=nifty_auto_data['latest_price'] * 0.015, format="%.2f")
+                k1 = st.number_input("Strike Price (1-Mo)", value=float(round(nifty_auto_data['latest_price'] * 0.98, -2)), step=50.0, key="k1")
+                p1 = st.number_input("Premium (1-Mo)", value=nifty_auto_data['latest_price'] * 0.015, format="%.2f", key="p1")
                 
                 index_price_range = np.linspace(nifty_auto_data['latest_price'] * 0.85, nifty_auto_data['latest_price'] * 1.15, 100)
                 portfolio_change = (index_price_range - nifty_auto_data['latest_price']) * hedge_units * beta
                 put_pnl1 = (np.maximum(k1 - index_price_range, 0) - p1) * hedge_units
                 hedged_pnl1 = portfolio_change + put_pnl1
-                render_payoff_chart(index_price_range, portfolio_change, hedged_pnl1, "1-Month Hedge Payoff", "Nifty Auto Price at Expiry", "Unhedged Portfolio P&L", "Hedged P&L (1-Mo)")
+                render_payoff_chart(index_price_range, portfolio_change, hedged_pnl1, "1-Month Hedge Payoff", "Nifty Auto Price at Expiry", "Unhdged Portfolio P&L", "Hedged P&L (1-Mo)")
 
             with col2:
                 st.markdown("##### 2-Month Contract")
-                k2 = st.number_input("Strike Price (2-Mo)", value=float(round(nifty_auto_data['latest_price'] * 0.98, -2)), step=50.0)
-                p2 = st.number_input("Premium (2-Mo)", value=nifty_auto_data['latest_price'] * 0.025, format="%.2f")
+                k2 = st.number_input("Strike Price (2-Mo)", value=float(round(nifty_auto_data['latest_price'] * 0.98, -2)), step=50.0, key="k2")
+                p2 = st.number_input("Premium (2-Mo)", value=nifty_auto_data['latest_price'] * 0.025, format="%.2f", key="p2")
                 
                 put_pnl2 = (np.maximum(k2 - index_price_range, 0) - p2) * hedge_units
                 hedged_pnl2 = portfolio_change + put_pnl2
-                render_payoff_chart(index_price_range, portfolio_change, hedged_pnl2, "2-Month Hedge Payoff", "Nifty Auto Price at Expiry", "Unhedged Portfolio P&L", "Hedged P&L (2-Mo)")
+                render_payoff_chart(index_price_range, portfolio_change, hedged_pnl2, "2-Month Hedge Payoff", "Nifty Auto Price at Expiry", "Unhdged Portfolio P&L", "Hedged P&L (2-Mo)")
 
         with tab_report:
-            st.header("Generated Strategy Report")
+            # The values for the report are now taken from the widgets in the cross-hedging tab
             hedge_params = {
-                'k1': k1, 'cost1': p1 * hedge_units,
-                'k2': k2, 'cost2': p2 * hedge_units
+                'k1': st.session_state.k1, 'cost1': st.session_state.p1 * hedge_units,
+                'k2': st.session_state.k2, 'cost2': st.session_state.p2 * hedge_units
             }
-            report_html = generate_strategy_report(portfolio_value, beta, hedge_params)
-            st.markdown(report_html, unsafe_allow_html=True)
-            st.download_button("Download Report as HTML", report_html, "hedging_report.html", "text/html")
+            generate_strategy_report(portfolio_value, beta, hedge_params)
 
     except Exception as e:
         st.error(f"An error occurred during analysis: {e}. This might be due to issues with fetching data, calculations, or unexpected data formats. Please check inputs or try again later.")
