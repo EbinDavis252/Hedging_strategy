@@ -70,27 +70,21 @@ def calculate_portfolio_beta(portfolio_securities, index_df):
     """Calculates the portfolio's beta with respect to a given index."""
     portfolio_value = pd.Series(0, index=index_df.index)
     for data in portfolio_securities.values():
-        # Align series and forward-fill missing values for portfolio calculation
         asset_value = data['df']['Close'] * data['shares']
         portfolio_value = portfolio_value.add(asset_value, fill_value=0)
     
     portfolio_value = portfolio_value.ffill().dropna()
-    
-    # Ensure index_df is aligned with portfolio_value
     aligned_index_df = index_df.reindex(portfolio_value.index).ffill().dropna()
     portfolio_value = portfolio_value.reindex(aligned_index_df.index).ffill().dropna()
 
-    if portfolio_value.empty or aligned_index_df.empty:
-        return 0
+    if portfolio_value.empty or aligned_index_df.empty: return 0
 
     portfolio_returns = portfolio_value.pct_change().dropna()
     index_returns = aligned_index_df['Close'].pct_change().dropna()
     
-    # Align returns series
     returns_df = pd.DataFrame({'portfolio': portfolio_returns, 'index': index_returns}).dropna()
     
-    if len(returns_df) < 2:
-        return 0
+    if len(returns_df) < 2: return 0
 
     covariance = returns_df['portfolio'].cov(returns_df['index'])
     variance = returns_df['index'].var()
@@ -101,9 +95,15 @@ def calculate_portfolio_beta(portfolio_securities, index_df):
 # --- Analyst Commentary & Report Generation ---
 def generate_analyst_commentary(security_data):
     """Generates a dynamic analysis for a single security."""
-    is_index = 'Index' in security_data['name']
     df = security_data['df']
-    info = security_data['info']
+    if df.empty or 'RSI' not in df.columns or df['RSI'].isnull().all():
+        return {
+            "trend_view": "Not enough data for trend analysis.",
+            "rsi_view": "Not enough data for momentum analysis.",
+            "final_take": "Data unavailable.", "strategy": "Cannot determine strategy.",
+            "overall_sentiment": "Unknown"
+        }
+
     latest_rsi = df['RSI'].iloc[-1]; ma50 = df['MA50'].iloc[-1]; ma200 = df['MA200'].iloc[-1]
     if latest_rsi > 70: rsi_view, rsi_sentiment = f"RSI is **{latest_rsi:.2f}** (overbought), suggesting a potential pullback.", "Bearish"
     elif latest_rsi < 30: rsi_view, rsi_sentiment = f"RSI is **{latest_rsi:.2f}** (oversold), suggesting a potential bounce.", "Bullish"
@@ -121,18 +121,12 @@ def generate_strategy_report(portfolio_value, beta, hedge_params):
     """Renders a full report for the cross-hedging strategy using Streamlit components."""
     st.header("📝 Hedging Strategy Report")
     st.caption(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    
     st.markdown("---")
-
-    # --- Section 1: Portfolio Overview ---
     st.subheader("1. Portfolio Overview & Risk Analysis")
     col1, col2 = st.columns(2)
     col1.metric("Total Stock Portfolio Value", f"₹{portfolio_value:,.2f}")
     col2.metric("Portfolio Beta (vs. Nifty Auto)", f"{beta:.2f}", help="For every 1% change in the Nifty Auto Index, your portfolio is expected to change by this percentage.")
-    
     st.markdown("---")
-
-    # --- Section 2: Strategy Comparison ---
     st.subheader("2. Strategy Comparison: 1-Month vs. 2-Month Contracts")
     col1, col2 = st.columns(2)
     with col1:
@@ -143,7 +137,6 @@ def generate_strategy_report(portfolio_value, beta, hedge_params):
             with st.expander("Pros & Cons"):
                 st.success("**Pros:** Lower upfront cost, ideal for hedging against specific short-term events.")
                 st.error("**Cons:** Protection is short-lived. Time decay is rapid.")
-
     with col2:
         with st.container(border=True):
             st.markdown("<h5>Medium-Term Hedge (2 Months)</h5>", unsafe_allow_html=True)
@@ -152,10 +145,7 @@ def generate_strategy_report(portfolio_value, beta, hedge_params):
             with st.expander("Pros & Cons"):
                 st.success("**Pros:** Longer protection, suitable for broader market trends or prolonged uncertainty.")
                 st.error("**Cons:** Higher premium cost, which is a larger drag on profits if the market rises.")
-
     st.markdown("---")
-
-    # --- Section 3: Final Recommendation ---
     st.subheader("3. Final Recommendation")
     with st.container():
         st.markdown("""
@@ -167,7 +157,6 @@ def generate_strategy_report(portfolio_value, beta, hedge_params):
             <p><b>Conclusion:</b> Your choice should align with your market view. If you anticipate prolonged weakness, choose the longer duration. If you are generally optimistic but want to guard against a sudden shock, the shorter, cheaper option is more logical.</p>
         </div>
         """, unsafe_allow_html=True)
-
 
 # --- UI Rendering Functions ---
 def render_payoff_chart(price_range, pnl, hedged_pnl, title, xaxis_title, legend_pnl, legend_hedged):
@@ -187,7 +176,7 @@ with st.sidebar:
     st.title("🛡️ HedgeX Pro")
     with st.expander("ℹ️ Hedging Concepts"):
         st.write("**Direct Hedge:** Using an option of the same asset you hold (e.g., a Reliance put to hedge Reliance stock).")
-        st.write("**Cross Hedge:** Using a related instrument (e.g., Nifty Auto puts) to hedge an asset or portfolio that lacks a direct, liquid options market. Success depends on the correlation (Beta).")
+        st.write("**Cross Hedge:** Using a related instrument (e.g., Nifty Auto puts) to hedge an asset or portfolio. Success depends on the correlation (Beta).")
     st.markdown("---")
     st.markdown("### **Portfolio Definition**")
     TICKER_MAP = {"Reliance": "RELIANCE.NS", "Infosys": "INFY.NS", "HDFC Bank": "HDFCBANK.NS", "Nifty Auto Index": "^CNXAUTO"}
@@ -218,7 +207,7 @@ if market_data is not None:
         nifty_auto_data = securities["Nifty Auto Index"]
 
         # --- Main Tabs ---
-        tab_dashboard, tab_direct, tab_cross, tab_report = st.tabs(["📊 Portfolio Dashboard", "🛡️ Direct Hedging", "🔀 Cross-Hedging Analysis", "📝 Strategy Report"])
+        tab_dashboard, tab_direct, tab_cross, tab_report = st.tabs(["📊 Portfolio Dashboard", "🛡️ Single-Stock Hedging", "🔀 Portfolio Cross-Hedging", "📝 Strategy Report"])
 
         with tab_dashboard:
             st.subheader("Live Portfolio Snapshot")
@@ -231,29 +220,35 @@ if market_data is not None:
             st.info("This dashboard shows the current value of your holdings. Use the other tabs to analyze hedging strategies.")
 
         with tab_direct:
-            st.subheader("Direct Hedging Simulation")
-            asset_to_analyze = st.selectbox("Select Security for Direct Hedge Analysis:", [k for k in securities if 'Index' not in k], key="analyze_asset")
-            selected_asset = securities[asset_to_analyze]
+            st.header("Single-Stock Direct Hedging Analysis")
+            st.write("This section analyzes hedging each stock individually with its own put option.")
             
-            st.markdown(f"### Simulating a Protective Put for {asset_to_analyze}")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                direct_k = st.number_input("Strike Price", value=float(round(selected_asset['latest_price'] * 0.98, -1)), step=10.0, key="direct_k")
-            with col2:
-                direct_p = st.number_input("Premium", value=selected_asset['latest_price'] * 0.02, format="%.2f", key="direct_p")
+            for name, data in stock_securities.items():
+                st.markdown("---")
+                st.subheader(f"Analysis for: {name}")
+                
+                analysis = generate_analyst_commentary(data)
+                st.info(f"**Analyst View:** The current outlook for {name} is **{analysis['overall_sentiment']}**. {analysis['final_take']}")
 
-            price_range = np.linspace(selected_asset['latest_price'] * 0.8, selected_asset['latest_price'] * 1.2, 100)
-            stock_pnl = (price_range - selected_asset['latest_price']) * selected_asset['shares']
-            put_pnl = (np.maximum(direct_k - price_range, 0) - direct_p) * selected_asset['shares']
-            hedged_pnl = stock_pnl + put_pnl
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    direct_k = st.number_input("Strike Price", value=float(round(data['latest_price'] * 0.98, -1)), step=10.0, key=f"direct_k_{name}")
+                    direct_p = st.number_input("Premium", value=data['latest_price'] * 0.02, format="%.2f", key=f"direct_p_{name}")
 
-            render_payoff_chart(price_range, stock_pnl, hedged_pnl, f"Direct Hedge on {asset_to_analyze}", f"{asset_to_analyze} Price at Expiry", "Unhdged P&L", "Hedged P&L")
-            st.info("This simulates hedging a single stock with its own put option.")
+                    price_range = np.linspace(data['latest_price'] * 0.8, data['latest_price'] * 1.2, 100)
+                    stock_pnl = (price_range - data['latest_price']) * data['shares']
+                    put_pnl = (np.maximum(direct_k - price_range, 0) - direct_p) * data['shares']
+                    hedged_pnl = stock_pnl + put_pnl
+                    
+                    render_payoff_chart(price_range, stock_pnl, hedged_pnl, f"Direct Hedge on {name}", f"{name} Price at Expiry", "Unhdged P&L", "Hedged P&L")
+                
+                with col2:
+                    st.markdown("**Strategy Recommendation**")
+                    st.write(analysis['strategy'])
 
 
         with tab_cross:
-            st.subheader("Cross-Hedging Portfolio with Nifty Auto Index")
+            st.header("Portfolio Cross-Hedging with Nifty Auto Index")
             beta = calculate_portfolio_beta(stock_securities, nifty_auto_data['df'])
             
             st.metric("Calculated Portfolio Beta (vs. Nifty Auto)", f"{beta:.2f}")
@@ -287,7 +282,6 @@ if market_data is not None:
                 render_payoff_chart(index_price_range, portfolio_change, hedged_pnl2, "2-Month Hedge Payoff", "Nifty Auto Price at Expiry", "Unhedged Portfolio P&L", "Hedged P&L (2-Mo)")
 
         with tab_report:
-            # The values for the report are now taken from the widgets in the cross-hedging tab
             if 'k1' in st.session_state and 'p1' in st.session_state and 'k2' in st.session_state and 'p2' in st.session_state:
                 hedge_params = {
                     'k1': st.session_state.k1, 'cost1': st.session_state.p1 * hedge_units,
@@ -295,7 +289,7 @@ if market_data is not None:
                 }
                 generate_strategy_report(portfolio_value, beta, hedge_params)
             else:
-                st.info("Please interact with the Cross-Hedging Analysis tab first to generate a report.")
+                st.info("Please interact with the Portfolio Cross-Hedging tab first to generate a report.")
 
 
     except Exception as e:
