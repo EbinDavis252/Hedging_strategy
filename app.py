@@ -244,13 +244,28 @@ if market_data is not None:
 
         with tab3:
             st.subheader(f"Latest News for {asset_to_analyze}")
-            for news_item in selected_asset['news']:
-                st.markdown(f"""
-                <div class="news-item">
-                    <a href="{news_item['link']}" target="_blank">{news_item['title']}</a>
-                    <p>{news_item['publisher']} - {datetime.fromtimestamp(news_item['providerPublishTime']).strftime('%d-%b-%Y')}</p>
-                </div>
-                """, unsafe_allow_html=True)
+            if selected_asset['news']:
+                for news_item in selected_asset['news']:
+                    # Robustly get news data with defaults
+                    title = news_item.get('title', 'No Title Available')
+                    link = news_item.get('link', '#')
+                    publisher = news_item.get('publisher', 'Unknown Publisher')
+                    publish_time = news_item.get('providerPublishTime')
+
+                    if publish_time:
+                        date_str = datetime.fromtimestamp(publish_time).strftime('%d-%b-%Y')
+                        display_text = f"{publisher} - {date_str}"
+                    else:
+                        display_text = publisher
+
+                    st.markdown(f"""
+                    <div class="news-item">
+                        <a href="{link}" target="_blank">{title}</a>
+                        <p>{display_text}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("No recent news found for this security.")
 
         # --- Strategy Recommendation Section ---
         st.markdown("<hr>", unsafe_allow_html=True)
@@ -300,3 +315,4 @@ if market_data is not None:
 
 else:
     st.info("🔄 Fetching live market data... Please wait. If this message persists, there may be an issue connecting to the data source.")
+
