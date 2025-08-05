@@ -2,13 +2,14 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from pathlib import Path
+import yfinance as yf
+from datetime import datetime, timedelta
 
 # --- Page Configuration ---
 st.set_page_config(
     layout="wide",
-    page_title="HedgeX | Protective Put Analysis",
-    page_icon="🛡️"
+    page_title="HedgeX | Live Protective Put Analysis",
+    page_icon="�️"
 )
 
 # --- Custom CSS for Professional UI ---
@@ -74,18 +75,11 @@ def load_css():
             }
 
             /* --- Call to Action Box --- */
-            .upload-callout {
-                background-color: #FFFFFF;
-                border: 2px dashed #007BFF;
-                border-radius: 10px;
-                padding: 40px;
-                text-align: center;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.05);
-            }
-            .upload-callout p {
-                font-size: 18px;
-                color: #1E2A38;
-                font-weight: 500;
+            .st-info {
+                background-color: #e1f5fe;
+                border-left: 5px solid #03a9f4;
+                padding: 20px;
+                border-radius: 8px;
             }
             
             /* --- Expander --- */
@@ -96,22 +90,16 @@ def load_css():
     """, unsafe_allow_html=True)
 
 # --- Data Handling ---
-@st.cache_data
-def clean_and_prepare_data(df):
-    """Cleans and prepares the uploaded stock data."""
-    df.columns = df.columns.str.strip()
-    # Handles both 'dd-mon-yy' (e.g., 01-Jan-24) and 'dd-mon-yyyy'
-    try:
-        df['Date'] = pd.to_datetime(df['Date'], format='%d-%b-%y')
-    except ValueError:
-        df['Date'] = pd.to_datetime(df['Date'], format='%d-%b-%Y')
-        
-    for col in ['OPEN', 'HIGH', 'LOW', 'CLOSE', 'vwap', 'VOLUME']:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce')
-    df.dropna(inplace=True)
-    df.sort_values('Date', inplace=True)
-    return df
+@st.cache_data(ttl=600) # Cache data for 10 minutes
+def get_market_data(tickers):
+    """Fetches live market data for a list of tickers."""
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=365)
+    
+    data = yf.download(tickers, start=start_date, end=end_date)
+    if data.empty:
+        return None
+    return data
 
 # --- UI Rendering Functions ---
 def render_payoff_chart(price_range, stock_pl, hedged_pl, asset_to_hedge, selected_asset_price, strike_price):
@@ -144,7 +132,7 @@ load_css()
 # --- Sidebar ---
 with st.sidebar:
     st.title("🛡️ HedgeX")
-    st.markdown("### **Navigation**")
+    st.markdown("### **Live Market Analysis**")
     
     with st.expander("ℹ️ What is a Protective Put?"):
         st.write("""
@@ -153,37 +141,40 @@ with st.sidebar:
         """)
 
     st.markdown("---")
-    st.markdown("### **Step 1: Upload Data**")
-    uploaded_file_1 = st.file_uploader("Upload Security 1 Data", type="csv")
-    uploaded_file_2 = st.file_uploader("Upload Security 2 Data", type="csv")
-    uploaded_file_3 = st.file_uploader("Upload Security 3 Data", type="csv")
-    st.markdown("---")
-    uploaded_file_4 = st.file_uploader("Upload Nifty Auto Index Data", type="csv", help="Upload data for market context analysis.")
-    st.markdown("---")
+    st.markdown("### **Portfolio Definition**")
+    
+    TICKER_MAP = {
+        "Reliance": "RELIANCE.NS",
+        "Infosys": "INFY.NS",
+        "HDFC Bank": "HDFCBANK.NS"
+    }
+    INDEX_TICKER = {"Nifty Auto": "^CNXAUTO"}
+
+    shares_input = {}
+    for name in TICKER_MAP.keys():
+        shares_input[name] = st.number_input(f"Shares of {name}", min_value=0, value=50, key=f"{name}_sh")
+
 
 # --- Main Page ---
-st.title("Interactive Hedging Strategy Dashboard")
-st.markdown("Analyze and visualize a **Protective Put** strategy on your stock portfolio with market context.")
+st.title("Live Hedging Strategy Dashboard")
+st.markdown("Analyze and visualize a **Protective Put** strategy on your stock portfolio using live market data.")
 
-if all([uploaded_file_1, uploaded_file_2, uploaded_file_3, uploaded_file_4]):
+all_tickers = list(TICKER_MAP.values()) + list(INDEX_TICKER.values())
+market_data = get_market_data(all_tickers)
+
+if market_data is not None and not market_data.empty:
     try:
         # --- Data Processing ---
-        securities = {
-            Path(f.name).stem.split('-')[0]: {'file': f} for f in [uploaded_file_1, uploaded_file_2, uploaded_file_3]
-        }
-
-        for name, data in securities.items():
-            df = clean_and_prepare_data(pd.read_csv(data['file']))
-            data['df'] = df
-            data['latest_price'] = df['CLOSE'].iloc[-1]
-
-        df_index = clean_and_prepare_data(pd.read_csv(uploaded_file_4))
+        securities = {}
+        for name, ticker in TICKER_MAP.items():
+            securities[name] = {
+                'ticker': ticker,
+                'df': market_data['Close'][ticker].dropna().to_frame('Close'),
+                'latest_price': market_data['Close'][ticker].dropna().iloc[-1],
+                'shares': shares_input[name]
+            }
         
-        # --- Sidebar Inputs (continued) ---
-        with st.sidebar:
-            st.markdown("### **Step 2: Define Portfolio**")
-            for name, data in securities.items():
-                data['shares'] = st.number_input(f"Shares of {name}", min_value=1, value=50, key=f"{name}_sh")
+        df_index = market_data['Close'][INDEX_TICKER["Nifty Auto"]].dropna().to_frame('Close')
 
         # --- Portfolio Overview ---
         with st.container(border=False):
@@ -213,7 +204,7 @@ if all([uploaded_file_1, uploaded_file_2, uploaded_file_3, uploaded_file_4]):
             with analysis_cols[1]:
                 strike_price = st.number_input("Strike Price (K)", min_value=0.0, value=suggested_strike, step=1.0, help="The price at which you can sell the stock.")
             with analysis_cols[2]:
-                premium = st.number_input("Premium per Share", min_value=0.0, value=25.50, step=0.1, help="The cost of buying the put option.")
+                premium = st.number_input("Premium per Share", min_value=0.0, value=selected_asset['latest_price'] * 0.025, format="%.2f", step=0.1, help="The cost of buying the put option.")
 
             price_range = np.linspace(selected_asset['latest_price'] * 0.70, selected_asset['latest_price'] * 1.30, 100)
             stock_pl = (price_range - selected_asset['latest_price']) * selected_asset['shares']
@@ -230,7 +221,7 @@ if all([uploaded_file_1, uploaded_file_2, uploaded_file_3, uploaded_file_4]):
             st.subheader("📝 Comparative Analysis & Strategy Recommendation")
             
             # 1. Nifty Auto Index Analysis
-            index_30d_change = (df_index['CLOSE'].iloc[-1] / df_index['CLOSE'].iloc[-30] - 1) * 100
+            index_30d_change = (df_index['Close'].iloc[-1] / df_index['Close'].iloc[-30] - 1) * 100
             trend = "upward" if index_30d_change > 0 else "downward"
             trend_color = "green" if trend == "upward" else "red"
 
@@ -248,12 +239,10 @@ if all([uploaded_file_1, uploaded_file_2, uploaded_file_3, uploaded_file_4]):
             comp_cols = st.columns(len(securities))
             for i, (name, data) in enumerate(securities.items()):
                 with comp_cols[i]:
-                    # Simulate ATM put
                     atm_strike = round(data['latest_price'], -1)
-                    # Simple premium assumption for comparison (e.g., 2.5% of stock price)
                     atm_premium = data['latest_price'] * 0.025 
                     max_loss = (data['latest_price'] - atm_strike + atm_premium) * data['shares']
-                    max_loss_pct = (max_loss / (data['latest_price'] * data['shares'])) * 100
+                    max_loss_pct = (max_loss / (data['latest_price'] * data['shares'])) * 100 if (data['latest_price'] * data['shares']) > 0 else 0
 
                     st.markdown(f"""
                     <div class="card">
@@ -287,15 +276,8 @@ if all([uploaded_file_1, uploaded_file_2, uploaded_file_3, uploaded_file_4]):
             """, unsafe_allow_html=True)
 
     except Exception as e:
-        st.error(f"An error occurred: {e}. Please ensure your CSV files are formatted correctly, have sufficient data (at least 30 days), and include columns like 'Date', 'CLOSE', etc.")
+        st.error(f"An error occurred during analysis: {e}. This might be due to issues with fetching data or unexpected data formats.")
 
 else:
     # --- Initial Call to Action ---
-    st.markdown(
-        """
-        <div class="upload-callout">
-            <p>🚀 Please upload all three security CSVs and the Nifty Auto Index CSV in the sidebar to begin the analysis.</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    st.info("🔄 Fetching live market data... Please wait. If this message persists, there may be an issue connecting to the data source.")
