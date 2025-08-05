@@ -47,6 +47,7 @@ def load_css():
                 box-shadow: 0 4px 8px rgba(0,0,0,0.05);
                 margin-bottom: 20px;
                 border: 1px solid #EAECEE;
+                height: 100%;
             }
             
             /* --- Metric Styles --- */
@@ -113,7 +114,7 @@ def clean_and_prepare_data(df):
     return df
 
 # --- UI Rendering Functions ---
-def render_payoff_chart(price_range, stock_pl, hedged_pl, asset_to_hedge, contract_duration, selected_asset_price, strike_price):
+def render_payoff_chart(price_range, stock_pl, hedged_pl, asset_to_hedge, selected_asset_price, strike_price):
     """Creates and displays the Plotly pay-off chart."""
     fig = go.Figure()
     # Unhedged Payoff
@@ -157,141 +158,143 @@ with st.sidebar:
     uploaded_file_2 = st.file_uploader("Upload Security 2 Data", type="csv")
     uploaded_file_3 = st.file_uploader("Upload Security 3 Data", type="csv")
     st.markdown("---")
+    uploaded_file_4 = st.file_uploader("Upload Nifty Auto Index Data", type="csv", help="Upload data for market context analysis.")
+    st.markdown("---")
 
 # --- Main Page ---
 st.title("Interactive Hedging Strategy Dashboard")
-st.markdown("Analyze and visualize a **Protective Put** strategy on your stock portfolio.")
+st.markdown("Analyze and visualize a **Protective Put** strategy on your stock portfolio with market context.")
 
-if uploaded_file_1 and uploaded_file_2 and uploaded_file_3:
+if all([uploaded_file_1, uploaded_file_2, uploaded_file_3, uploaded_file_4]):
     try:
         # --- Data Processing ---
-        df1 = clean_and_prepare_data(pd.read_csv(uploaded_file_1))
-        df2 = clean_and_prepare_data(pd.read_csv(uploaded_file_2))
-        df3 = clean_and_prepare_data(pd.read_csv(uploaded_file_3))
+        securities = {
+            Path(f.name).stem.split('-')[0]: {'file': f} for f in [uploaded_file_1, uploaded_file_2, uploaded_file_3]
+        }
 
-        s1_name = Path(uploaded_file_1.name).stem.split('-')[0]
-        s2_name = Path(uploaded_file_2.name).stem.split('-')[0]
-        s3_name = Path(uploaded_file_3.name).stem.split('-')[0]
+        for name, data in securities.items():
+            df = clean_and_prepare_data(pd.read_csv(data['file']))
+            data['df'] = df
+            data['latest_price'] = df['CLOSE'].iloc[-1]
 
-        s1_latest_price = df1['CLOSE'].iloc[-1]
-        s2_latest_price = df2['CLOSE'].iloc[-1]
-        s3_latest_price = df3['CLOSE'].iloc[-1]
-
+        df_index = clean_and_prepare_data(pd.read_csv(uploaded_file_4))
+        
         # --- Sidebar Inputs (continued) ---
         with st.sidebar:
             st.markdown("### **Step 2: Define Portfolio**")
-            s1_shares = st.number_input(f"Shares of {s1_name}", min_value=1, value=50, key="s1_sh")
-            s2_shares = st.number_input(f"Shares of {s2_name}", min_value=1, value=100, key="s2_sh")
-            s3_shares = st.number_input(f"Shares of {s3_name}", min_value=1, value=75, key="s3_sh")
-            st.markdown("---")
-
-            st.markdown("### **Step 3: Set Hedge**")
-            asset_dict = {
-                s1_name: {'price': s1_latest_price, 'shares': s1_shares},
-                s2_name: {'price': s2_latest_price, 'shares': s2_shares},
-                s3_name: {'price': s3_latest_price, 'shares': s3_shares},
-            }
-            asset_to_hedge = st.selectbox("Which security to hedge?", asset_dict.keys(), key="hedge_asset")
-            
-            selected_asset_price = asset_dict[asset_to_hedge]['price']
-            suggested_strike = float(round(selected_asset_price, -1))
-            
-            strike_price = st.number_input("Strike Price (K)", min_value=0.0, value=suggested_strike, step=1.0, help="The price at which you can sell the stock.")
-            premium = st.number_input("Premium per Share", min_value=0.0, value=25.50, step=0.1, help="The cost of buying the put option.")
-            contract_duration = st.selectbox("Contract Duration", ("1-Month", "2-Month", "3-Month"), key="duration")
+            for name, data in securities.items():
+                data['shares'] = st.number_input(f"Shares of {name}", min_value=1, value=50, key=f"{name}_sh")
 
         # --- Portfolio Overview ---
         with st.container(border=False):
             st.subheader("📊 Portfolio Snapshot")
-            initial_portfolio_value = (s1_shares * s1_latest_price) + (s2_shares * s2_latest_price) + (s3_shares * s3_latest_price)
+            total_value = sum(data['latest_price'] * data['shares'] for data in securities.values())
             
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.markdown(f"<div class='metric-card'><h5>{s1_name} Price</h5><p>₹{s1_latest_price:,.2f}</p></div>", unsafe_allow_html=True)
-            with col2:
-                st.markdown(f"<div class='metric-card'><h5>{s2_name} Price</h5><p>₹{s2_latest_price:,.2f}</p></div>", unsafe_allow_html=True)
-            with col3:
-                st.markdown(f"<div class='metric-card'><h5>{s3_name} Price</h5><p>₹{s3_latest_price:,.2f}</p></div>", unsafe_allow_html=True)
-            with col4:
-                st.markdown(f"<div class='metric-card portfolio'><h5>Total Value</h5><p>₹{initial_portfolio_value:,.2f}</p></div>", unsafe_allow_html=True)
+            cols = st.columns(len(securities) + 1)
+            for i, (name, data) in enumerate(securities.items()):
+                with cols[i]:
+                    st.markdown(f"<div class='metric-card'><h5>{name} Price</h5><p>₹{data['latest_price']:,.2f}</p></div>", unsafe_allow_html=True)
+            with cols[len(securities)]:
+                st.markdown(f"<div class='metric-card portfolio'><h5>Total Value</h5><p>₹{total_value:,.2f}</p></div>", unsafe_allow_html=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
 
         # --- Payoff Calculation & Chart ---
-        with st.container():
-            st.subheader(f"🛡️ Pay-off Analysis for {asset_to_hedge}")
+        with st.container(border=False):
+            st.subheader(f"🛡️ Pay-off Analysis")
             
-            selected_asset_shares = asset_dict[asset_to_hedge]['shares']
-            price_range = np.linspace(selected_asset_price * 0.70, selected_asset_price * 1.30, 100)
+            analysis_cols = st.columns([2,1,1])
+            with analysis_cols[0]:
+                asset_to_analyze = st.selectbox("Select Security to Analyze:", securities.keys(), key="analyze_asset")
             
-            # Payoff Calculations
-            stock_pl = (price_range - selected_asset_price) * selected_asset_shares
-            put_pl = (np.maximum(strike_price - price_range, 0) - premium) * selected_asset_shares
+            selected_asset = securities[asset_to_analyze]
+            suggested_strike = float(round(selected_asset['latest_price'], -1))
+
+            with analysis_cols[1]:
+                strike_price = st.number_input("Strike Price (K)", min_value=0.0, value=suggested_strike, step=1.0, help="The price at which you can sell the stock.")
+            with analysis_cols[2]:
+                premium = st.number_input("Premium per Share", min_value=0.0, value=25.50, step=0.1, help="The cost of buying the put option.")
+
+            price_range = np.linspace(selected_asset['latest_price'] * 0.70, selected_asset['latest_price'] * 1.30, 100)
+            stock_pl = (price_range - selected_asset['latest_price']) * selected_asset['shares']
+            put_pl = (np.maximum(strike_price - price_range, 0) - premium) * selected_asset['shares']
             hedged_pl = stock_pl + put_pl
             
             with st.container(border=False):
-                render_payoff_chart(price_range, stock_pl, hedged_pl, asset_to_hedge, contract_duration, selected_asset_price, strike_price)
+                render_payoff_chart(price_range, stock_pl, hedged_pl, asset_to_analyze, selected_asset['latest_price'], strike_price)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # --- Report and Insights ---
+        # --- Comparative Analysis and Insights ---
         with st.container():
-            st.subheader("📝 Analysis & Insights")
+            st.subheader("📝 Comparative Analysis & Strategy Recommendation")
             
-            max_loss = (selected_asset_price - strike_price + premium) * selected_asset_shares
-            breakeven = selected_asset_price + premium
-            total_premium_cost = premium * selected_asset_shares
-            
-            report_col1, report_col2 = st.columns(2)
-            
-            with report_col1:
-                st.markdown(f"""
-                <div class="card">
-                    <h4>Unhdged Strategy (Stock Only)</h4>
-                    <p>This strategy involves simply holding the <strong>{selected_asset_shares} shares</strong> of <strong>{asset_to_hedge}</strong> without any protection.</p>
-                    <ul>
-                        <li><strong>Potential Profit:</strong> <span style="color: green;">Unlimited</span></li>
-                        <li><strong>Potential Loss:</strong> <span style="color: red;">Substantial</span> (up to the full value of the holding)</li>
-                        <li><strong>Breakeven Point:</strong> ₹{selected_asset_price:,.2f}</li>
-                    </ul>
-                </div>
-                """, unsafe_allow_html=True)
+            # 1. Nifty Auto Index Analysis
+            index_30d_change = (df_index['CLOSE'].iloc[-1] / df_index['CLOSE'].iloc[-30] - 1) * 100
+            trend = "upward" if index_30d_change > 0 else "downward"
+            trend_color = "green" if trend == "upward" else "red"
 
-            with report_col2:
-                st.markdown(f"""
-                <div class="card">
-                    <h4>Hedged Strategy (Protective Put)</h4>
-                    <p>This involves holding the stock and buying a put option to limit downside risk. The cost of this "insurance" is the premium.</p>
-                    <ul>
-                        <li><strong>Total Premium Paid:</strong> ₹{total_premium_cost:,.2f}</li>
-                        <li><strong>Maximum Loss:</strong> <span style="color: green;">Capped at ₹{max_loss:,.2f}</span></li>
-                        <li><strong>Breakeven Point:</strong> ₹{breakeven:,.2f}</li>
-                    </ul>
-                </div>
-                """, unsafe_allow_html=True)
-            
             st.markdown(f"""
             <div class="card">
-                <h4>Conclusion & Recommendation</h4>
-                <p>The pay-off diagram clearly shows the value of the Protective Put. The green line (Hedged P&L) flattens on the left, demonstrating that your loss is <strong>capped at ₹{max_loss:,.2f}</strong>, regardless of how far the stock price falls. This protection comes at the cost of the premium (<strong>₹{premium:,.2f} per share</strong>), which also raises your breakeven price.</p>
-                <p><strong>Recommendation for the {contract_duration} contract:</strong></p>
-                <ul>
-                    <li>If you are <strong>bearish or uncertain</strong> about {asset_to_hedge}'s performance, this hedge is <strong>highly recommended</strong>. It provides excellent downside protection for a fixed, upfront cost.</li>
-                    <li>If you are <strong>strongly bullish</strong>, you might consider the hedge an unnecessary expense. However, it still acts as a valuable insurance policy against unexpected negative market events.</li>
-                </ul>
-                <p><i>Experiment with different <strong>Strike Prices</strong> and <strong>Premiums</strong> in the sidebar to see how they impact your potential outcomes.</i></p>
+                <h4>Market Context: Nifty Auto Index</h4>
+                <p>The Nifty Auto Index has shown a <strong><span style='color:{trend_color};'>{index_30d_change:.2f}%</span></strong> change over the last 30 trading days, indicating a recent <strong>{trend} trend</strong> in the auto sector. This market sentiment is a key factor when considering hedging.</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # 2. Strategy Comparison
+            st.markdown("<h4>Hedging Strategy Comparison (At-the-Money)</h4>", unsafe_allow_html=True)
+            st.write("The table below simulates an at-the-money (ATM) protective put for each security to compare their relative hedging costs and benefits.")
+            
+            comp_cols = st.columns(len(securities))
+            for i, (name, data) in enumerate(securities.items()):
+                with comp_cols[i]:
+                    # Simulate ATM put
+                    atm_strike = round(data['latest_price'], -1)
+                    # Simple premium assumption for comparison (e.g., 2.5% of stock price)
+                    atm_premium = data['latest_price'] * 0.025 
+                    max_loss = (data['latest_price'] - atm_strike + atm_premium) * data['shares']
+                    max_loss_pct = (max_loss / (data['latest_price'] * data['shares'])) * 100
+
+                    st.markdown(f"""
+                    <div class="card">
+                        <h5>{name}</h5>
+                        <ul>
+                            <li><strong>Max Loss:</strong> ₹{max_loss:,.0f}</li>
+                            <li><strong>Cost of Hedge:</strong> {max_loss_pct:.2f}% of holding</li>
+                        </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            # 3. Final Recommendation
+            st.markdown(f"""
+            <div class="card">
+                <h4>Strategy Recommendation</h4>
+                <p>Given the recent <strong>{trend} trend</strong> in the Nifty Auto Index, your approach to hedging should be considered accordingly.</p>
+                
+                <h5>For a 1-Month Contract:</h5>
+                <p>A one-month contract is a short-term hedge. It's cheaper but offers protection for a limited time.
+                    <ul><li>If the market trend is <strong>downward</strong>, this is a cost-effective way to protect against immediate further declines.</li>
+                    <li>If the trend is <strong>upward</strong>, this acts as a low-cost insurance against a sudden reversal.</li></ul>
+                </p>
+
+                <h5>For a 2-Month (or longer) Contract:</h5>
+                <p>A longer contract provides protection for an extended period but comes at a higher premium due to increased time value.
+                    <ul><li>This is suitable if you anticipate volatility over the medium term, regardless of the current short-term trend.</li>
+                    <li>The higher cost provides peace of mind for a longer duration, allowing your long-term investment thesis to play out while being protected from significant downturns.</li></ul>
+                </p>
+                <p><strong>Conclusion:</strong> Compare the 'Cost of Hedge' percentage for each stock above. A lower percentage indicates a more cost-effective hedge relative to the value of the holding. In a downward trending market, prioritizing protection might be key, while in an upward market, you might opt for the most cost-effective hedge as a precaution.</p>
             </div>
             """, unsafe_allow_html=True)
 
     except Exception as e:
-        st.error(f"An error occurred: {e}. Please ensure your CSV files are formatted correctly with columns like 'Date', 'CLOSE', 'VOLUME', etc.")
+        st.error(f"An error occurred: {e}. Please ensure your CSV files are formatted correctly, have sufficient data (at least 30 days), and include columns like 'Date', 'CLOSE', etc.")
 
 else:
     # --- Initial Call to Action ---
     st.markdown(
         """
         <div class="upload-callout">
-            <p>🚀 Please upload all three CSV files in the sidebar to begin the analysis.</p>
+            <p>🚀 Please upload all three security CSVs and the Nifty Auto Index CSV in the sidebar to begin the analysis.</p>
         </div>
         """,
         unsafe_allow_html=True
