@@ -7,8 +7,8 @@ def clean_and_prepare_data(df):
     """Cleans and prepares the uploaded stock data."""
     # Strip whitespace from column names
     df.columns = df.columns.str.strip()
-    # Convert 'Date' to datetime
-    df['Date'] = pd.to_datetime(df['Date'], format='%d-%b-%Y')
+    # CORRECTED LINE: Changed %Y to %y to handle two-digit years like '25'
+    df['Date'] = pd.to_datetime(df['Date'], format='%d-%b-%y')
     # Convert numeric columns, removing commas and handling errors
     for col in ['OPEN', 'HIGH', 'LOW', 'CLOSE', 'vwap', 'VOLUME']:
         if col in df.columns:
@@ -16,20 +16,6 @@ def clean_and_prepare_data(df):
     df.dropna(inplace=True)
     df.sort_values('Date', inplace=True)
     return df
-
-def calculate_payoff(stock_price_range, strike_price, premium, strategy_type, is_long):
-    """Calculates the payoff for an option."""
-    if strategy_type == 'Put':
-        payoff = np.maximum(strike_price - stock_price_range, 0)
-    elif strategy_type == 'Call':
-        payoff = np.maximum(stock_price_range - strike_price, 0)
-    else:
-        return np.zeros_like(stock_price_range)
-
-    if is_long:
-        return payoff - premium
-    else: # Short position
-        return premium - payoff
 
 # --- Streamlit App ---
 
@@ -151,7 +137,6 @@ if uploaded_file_1 and uploaded_file_2 and uploaded_file_3:
         ))
 
         # Breakeven and key points
-        breakeven_price = selected_asset_price - premium
         max_loss = (selected_asset_price - strike_price + premium) * selected_asset_shares * -1
 
         fig.add_vline(x=selected_asset_price, line_width=1, line_dash="dash", line_color="grey", annotation_text="Current Price")
