@@ -73,22 +73,6 @@ def load_css():
                 font-weight: 600;
                 color: #1E2A38;
             }
-
-            /* --- News Item Style --- */
-            .news-item {
-                border-bottom: 1px solid #EAECEE;
-                padding: 10px 0;
-            }
-            .news-item a {
-                text-decoration: none;
-                color: #007BFF;
-                font-weight: 500;
-            }
-            .news-item p {
-                font-size: 12px;
-                color: #566573;
-                margin: 5px 0 0 0;
-            }
         </style>
     """, unsafe_allow_html=True)
 
@@ -103,9 +87,9 @@ def get_market_data(tickers):
 
 @st.cache_data(ttl=600)
 def get_stock_info(ticker):
-    """Fetches financial info and news for a single ticker."""
+    """Fetches financial info for a single ticker."""
     stock = yf.Ticker(ticker)
-    return stock.info, stock.news
+    return stock.info
 
 def calculate_technicals(df):
     """Calculates technical indicators for a given dataframe."""
@@ -156,7 +140,7 @@ with st.sidebar:
 
 # --- Main Page ---
 st.title("Live Comprehensive Hedging Dashboard")
-st.markdown("An integrated dashboard for hedging analysis, combining financial, technical, and sentiment data.")
+st.markdown("An integrated dashboard for hedging analysis, combining financial and technical data.")
 
 market_data = get_market_data(list(TICKER_MAP.values()) + list(INDEX_TICKER.values()))
 
@@ -166,14 +150,13 @@ if market_data is not None:
         securities = {}
         for name, ticker in TICKER_MAP.items():
             df = market_data['Close'][ticker].dropna().to_frame('Close')
-            info, news = get_stock_info(ticker)
+            info = get_stock_info(ticker)
             securities[name] = {
                 'ticker': ticker,
                 'df': calculate_technicals(df),
                 'latest_price': df['Close'].iloc[-1],
                 'shares': shares_input[name],
                 'info': info,
-                'news': news
             }
         df_index = market_data['Close'][INDEX_TICKER["Nifty Auto"]].dropna().to_frame('Close')
 
@@ -193,7 +176,7 @@ if market_data is not None:
         asset_to_analyze = st.selectbox("Select Security for Detailed Analysis:", securities.keys(), key="analyze_asset")
         selected_asset = securities[asset_to_analyze]
         
-        tab1, tab2, tab3 = st.tabs(["🛡️ Hedging Analysis", "📈 Technical & Financials", "📰 Recent News"])
+        tab1, tab2 = st.tabs(["🛡️ Hedging Analysis", "📈 Technical & Financials"])
 
         with tab1:
             st.subheader(f"Protective Put Simulation for {asset_to_analyze}")
@@ -241,31 +224,6 @@ if market_data is not None:
                 if ma50 > ma200: trend_text = "Bullish Trend (Golden Cross)"
                 else: trend_text = "Bearish Trend (Death Cross)"
                 st.info(trend_text)
-
-        with tab3:
-            st.subheader(f"Latest News for {asset_to_analyze}")
-            if selected_asset['news']:
-                for news_item in selected_asset['news']:
-                    # Robustly get news data with defaults
-                    title = news_item.get('title', 'No Title Available')
-                    link = news_item.get('link', '#')
-                    publisher = news_item.get('publisher', 'Unknown Publisher')
-                    publish_time = news_item.get('providerPublishTime')
-
-                    if publish_time:
-                        date_str = datetime.fromtimestamp(publish_time).strftime('%d-%b-%Y')
-                        display_text = f"{publisher} - {date_str}"
-                    else:
-                        display_text = publisher
-
-                    st.markdown(f"""
-                    <div class="news-item">
-                        <a href="{link}" target="_blank">{title}</a>
-                        <p>{display_text}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.info("No recent news found for this security.")
 
         # --- Strategy Recommendation Section ---
         st.markdown("<hr>", unsafe_allow_html=True)
