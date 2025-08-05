@@ -234,13 +234,21 @@ if market_data is not None:
             st.subheader("Direct Hedging Simulation")
             asset_to_analyze = st.selectbox("Select Security for Direct Hedge Analysis:", [k for k in securities if 'Index' not in k], key="analyze_asset")
             selected_asset = securities[asset_to_analyze]
-            analysis_data = generate_analyst_commentary(selected_asset)
             
             st.markdown(f"### Simulating a Protective Put for {asset_to_analyze}")
-            # [UI for strike/premium and payoff chart for direct hedging retained here]
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                direct_k = st.number_input("Strike Price", value=float(round(selected_asset['latest_price'] * 0.98, -1)), step=10.0, key="direct_k")
+            with col2:
+                direct_p = st.number_input("Premium", value=selected_asset['latest_price'] * 0.02, format="%.2f", key="direct_p")
+
             price_range = np.linspace(selected_asset['latest_price'] * 0.8, selected_asset['latest_price'] * 1.2, 100)
-            stock_pl = (price_range - selected_asset['latest_price']) * selected_asset['shares']
-            # ... additional direct hedge logic and chart rendering
+            stock_pnl = (price_range - selected_asset['latest_price']) * selected_asset['shares']
+            put_pnl = (np.maximum(direct_k - price_range, 0) - direct_p) * selected_asset['shares']
+            hedged_pnl = stock_pnl + put_pnl
+
+            render_payoff_chart(price_range, stock_pnl, hedged_pnl, f"Direct Hedge on {asset_to_analyze}", f"{asset_to_analyze} Price at Expiry", "Unhdged P&L", "Hedged P&L")
             st.info("This simulates hedging a single stock with its own put option.")
 
 
@@ -267,7 +275,7 @@ if market_data is not None:
                 portfolio_change = (index_price_range - nifty_auto_data['latest_price']) * hedge_units * beta
                 put_pnl1 = (np.maximum(k1 - index_price_range, 0) - p1) * hedge_units
                 hedged_pnl1 = portfolio_change + put_pnl1
-                render_payoff_chart(index_price_range, portfolio_change, hedged_pnl1, "1-Month Hedge Payoff", "Nifty Auto Price at Expiry", "Unhdged Portfolio P&L", "Hedged P&L (1-Mo)")
+                render_payoff_chart(index_price_range, portfolio_change, hedged_pnl1, "1-Month Hedge Payoff", "Nifty Auto Price at Expiry", "Unhedged Portfolio P&L", "Hedged P&L (1-Mo)")
 
             with col2:
                 st.markdown("##### 2-Month Contract")
@@ -276,15 +284,19 @@ if market_data is not None:
                 
                 put_pnl2 = (np.maximum(k2 - index_price_range, 0) - p2) * hedge_units
                 hedged_pnl2 = portfolio_change + put_pnl2
-                render_payoff_chart(index_price_range, portfolio_change, hedged_pnl2, "2-Month Hedge Payoff", "Nifty Auto Price at Expiry", "Unhdged Portfolio P&L", "Hedged P&L (2-Mo)")
+                render_payoff_chart(index_price_range, portfolio_change, hedged_pnl2, "2-Month Hedge Payoff", "Nifty Auto Price at Expiry", "Unhedged Portfolio P&L", "Hedged P&L (2-Mo)")
 
         with tab_report:
             # The values for the report are now taken from the widgets in the cross-hedging tab
-            hedge_params = {
-                'k1': st.session_state.k1, 'cost1': st.session_state.p1 * hedge_units,
-                'k2': st.session_state.k2, 'cost2': st.session_state.p2 * hedge_units
-            }
-            generate_strategy_report(portfolio_value, beta, hedge_params)
+            if 'k1' in st.session_state and 'p1' in st.session_state and 'k2' in st.session_state and 'p2' in st.session_state:
+                hedge_params = {
+                    'k1': st.session_state.k1, 'cost1': st.session_state.p1 * hedge_units,
+                    'k2': st.session_state.k2, 'cost2': st.session_state.p2 * hedge_units
+                }
+                generate_strategy_report(portfolio_value, beta, hedge_params)
+            else:
+                st.info("Please interact with the Cross-Hedging Analysis tab first to generate a report.")
+
 
     except Exception as e:
         st.error(f"An error occurred during analysis: {e}. This might be due to issues with fetching data, calculations, or unexpected data formats. Please check inputs or try again later.")
