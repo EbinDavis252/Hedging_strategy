@@ -39,8 +39,8 @@ def load_css():
             .st-emotion-cache-1cypcdb { /* Sidebar links */
                 color: #FFFFFF;
             }
-            /* THIS IS THE FIX: Target sidebar widget labels and set color to white */
-            [data-testid="stSidebar"] .st-emotion-cache-1q8dd3e {
+            /* THIS IS THE FIX: Target all labels within the sidebar and set their color to white */
+            [data-testid="stSidebar"] label {
                 color: #FFFFFF;
             }
             
