@@ -74,19 +74,27 @@ def load_css():
                 color: #1E2A38;
             }
             
-            /* --- Analyst View Card --- */
+            /* --- Analyst View & Recommendation Cards --- */
             .analyst-card {
-                background-color: #eaf2f8;
-                border-left: 6px solid #5499c7;
+                background-color: #FFFFFF;
+                border: 1px solid #EAECEE;
                 padding: 20px;
                 border-radius: 8px;
                 margin-top: 20px;
             }
-            .analyst-card h4 {
-                color: #1a5276;
-                margin-top: 0;
+            .recommendation-card {
+                background-color: #eaf2f8;
+                border-left: 6px solid #5499c7;
+                padding: 20px;
+                border-radius: 8px;
+                margin-top: 15px;
             }
-            .analyst-card p, .analyst-card li {
+            .recommendation-card h5 {
+                 color: #1a5276;
+                 margin-top: 0;
+                 margin-bottom: 10px;
+            }
+            .recommendation-card p {
                 font-size: 15px;
                 color: #212f3c;
             }
@@ -124,9 +132,8 @@ def calculate_technicals(df):
 
 # --- AI-Powered Analyst Commentary ---
 def generate_analyst_commentary(security_data):
-    """Generates a dynamic analysis and recommendation based on the security's data."""
-    name = security_data['name']
-    is_index = 'Index' in name
+    """Generates a dynamic analysis and returns structured components."""
+    is_index = 'Index' in security_data['name']
     df = security_data['df']
     info = security_data['info']
     
@@ -159,7 +166,7 @@ def generate_analyst_commentary(security_data):
     if not is_index:
         pe = info.get('trailingPE')
         pb = info.get('priceToBook')
-        financials_view = "<h5>Fundamental Snapshot:</h5><ul>"
+        financials_view = "<ul>"
         if pe:
             financials_view += f"<li>The **P/E Ratio of {pe:.2f}** suggests how the market values the company's earnings. A high P/E can indicate high growth expectations, while a low P/E might suggest it's undervalued or facing challenges.</li>"
         else:
@@ -168,39 +175,33 @@ def generate_analyst_commentary(security_data):
             financials_view += f"<li>The **P/B Ratio of {pb:.2f}** compares the market value to the company's book value. It provides a sense of whether the stock is priced fairly in relation to its net assets.</li>"
         financials_view += "</ul>"
 
-    # Final Recommendation
+    # Determine Overall Sentiment and Recommendation
     sentiments = [rsi_sentiment, trend_sentiment]
     if sentiments.count("Bullish") == 2:
+        overall_sentiment = "Strongly Bullish"
         final_take = "The technical indicators are strongly aligned, presenting a **clear bullish outlook**. The primary trend is up, and while short-term pullbacks are possible, the path of least resistance appears to be upward."
         strategy = "A **Protective Put** would act as insurance against unexpected negative shocks rather than a bet on a downturn. Speculatively, this environment is more favorable for **call options** or buying the underlying asset."
     elif sentiments.count("Bearish") == 2:
+        overall_sentiment = "Strongly Bearish"
         final_take = "With both momentum and trend indicators pointing downwards, the outlook is decidedly **bearish**. Caution is strongly advised as there is a heightened risk of further price declines."
         strategy = "This is a prime scenario for a **Protective Put** to hedge existing holdings. The cost of the put (premium) serves to protect against significant potential losses. Speculating on further downside via puts could also be considered."
     elif "Bearish" in sentiments and "Bullish" in sentiments:
+        overall_sentiment = "Mixed"
         final_take = "The indicators are sending **conflicting signals**, suggesting market uncertainty. The long-term trend may be bullish, but short-term momentum is weak (or vice-versa). This indicates a potential for volatility."
         strategy = "Hedging with a **Protective Put** is a prudent move in such an uncertain environment to protect against a sudden move in either direction. The choice of strike price becomes critical."
     else: # Neutral signals
+        overall_sentiment = "Neutral"
         final_take = "The current technical picture is **neutral and indecisive**. The asset appears to be in a consolidation phase without a strong directional bias."
         strategy = "A **Protective Put** can be used to define your risk if you are holding the asset, but there's no strong technical reason to expect a major price move. It's a time for patience and waiting for a clearer signal to emerge."
 
-    # Assemble the commentary
-    commentary = f"""
-    <div class="analyst-card">
-        <h4>🔍 Analyst's View on {name}</h4>
-        <p>Here is a breakdown of the key signals and what they mean from an analytical perspective.</p>
-        <hr>
-        <h5>Technical Analysis:</h5>
-        <ul>
-            <li><b>Trend Analysis:</b> {trend_view}</li>
-            <li><b>Momentum Analysis:</b> {rsi_view}</li>
-        </ul>
-        {financials_view}
-        <h5>Strategic Recommendation:</h5>
-        <p><b>Overall Outlook:</b> {final_take}</p>
-        <p><b>Hedging vs. Speculation:</b> {strategy}</p>
-    </div>
-    """
-    return commentary
+    return {
+        "trend_view": trend_view,
+        "rsi_view": rsi_view,
+        "financials_view": financials_view,
+        "final_take": final_take,
+        "strategy": strategy,
+        "overall_sentiment": overall_sentiment
+    }
 
 # --- UI Rendering Functions ---
 def render_payoff_chart(price_range, stock_pl, hedged_pl, asset_to_hedge, selected_asset_price, strike_price):
@@ -256,7 +257,6 @@ if market_data is not None:
         # --- Data Processing ---
         securities = {}
         for name, ticker in TICKER_MAP.items():
-            # Handle multi-level columns from yfinance
             if isinstance(market_data.columns, pd.MultiIndex):
                 df_close = market_data['Close'][ticker]
             else:
@@ -291,6 +291,7 @@ if market_data is not None:
         # --- Main Analysis Section ---
         asset_to_analyze = st.selectbox("Select Security or Index for Detailed Analysis:", securities.keys(), key="analyze_asset")
         selected_asset = securities[asset_to_analyze]
+        analysis_data = generate_analyst_commentary(selected_asset)
         
         tab1, tab2 = st.tabs(["🛡️ Hedging Analysis", "📈 Technical & Financials"])
 
@@ -309,16 +310,44 @@ if market_data is not None:
             hedged_pl = stock_pl + put_pl
             
             render_payoff_chart(price_range, stock_pl, hedged_pl, asset_to_analyze, selected_asset['latest_price'], strike_price)
-            st.info("This chart shows your potential profit or loss. The green 'Hedged P&L' line demonstrates how the put option limits your downside risk, creating a 'floor' for your investment.")
+            
+            # --- Strategic Takeaway for Hedging ---
+            st.markdown("---")
+            st.subheader("Strategic Takeaway for this Hedge")
+            sentiment = analysis_data['overall_sentiment']
+            if sentiment == "Strongly Bearish":
+                st.warning(f"**Action Point:** Given the **{sentiment}** outlook, executing this Protective Put is a highly recommended defensive maneuver to protect your capital against expected downside.")
+            elif sentiment == "Strongly Bullish":
+                st.success(f"**Action Point:** The outlook is **{sentiment}**. This hedge should be viewed as a low-cost insurance policy against an unexpected market shock, not as a primary strategy.")
+            else: # Mixed or Neutral
+                st.info(f"**Action Point:** The market signals are **{sentiment}**. This hedge offers valuable protection against potential volatility and clearly defines your maximum risk in an uncertain environment.")
 
 
         with tab2:
             st.subheader(f"Technical & Financial Overview for {asset_to_analyze}")
             render_technical_chart(selected_asset['df'], asset_to_analyze)
             
-            # Generate and display the dynamic analyst commentary
-            analyst_view = generate_analyst_commentary(selected_asset)
-            st.markdown(analyst_view, unsafe_allow_html=True)
+            st.markdown("---")
+            st.subheader("🔍 Analyst's View")
+            
+            with st.expander("📊 **Trend Analysis (Moving Averages)**"):
+                st.markdown(analysis_data['trend_view'])
+            
+            with st.expander("📈 **Momentum Analysis (RSI)**"):
+                st.markdown(analysis_data['rsi_view'])
+
+            if 'Index' not in selected_asset['name']:
+                with st.expander("🏦 **Fundamental Snapshot**"):
+                    st.markdown(analysis_data['financials_view'], unsafe_allow_html=True)
+            
+            # --- Final Recommendation Card ---
+            st.markdown(f"""
+            <div class="recommendation-card">
+                <h5>📝 Final Recommendation</h5>
+                <p><b>Overall Outlook:</b> {analysis_data['final_take']}</p>
+                <p><b>Strategic Angle:</b> {analysis_data['strategy']}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
 
     except Exception as e:
