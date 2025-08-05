@@ -73,6 +73,23 @@ def load_css():
                 font-weight: 600;
                 color: #1E2A38;
             }
+            
+            /* --- Analyst View Card --- */
+            .analyst-card {
+                background-color: #eaf2f8;
+                border-left: 6px solid #5499c7;
+                padding: 20px;
+                border-radius: 8px;
+                margin-top: 20px;
+            }
+            .analyst-card h4 {
+                color: #1a5276;
+                margin-top: 0;
+            }
+            .analyst-card p, .analyst-card li {
+                font-size: 15px;
+                color: #212f3c;
+            }
         </style>
     """, unsafe_allow_html=True)
 
@@ -93,6 +110,8 @@ def get_stock_info(ticker):
 
 def calculate_technicals(df):
     """Calculates technical indicators for a given dataframe."""
+    if df.empty:
+        return df
     df['MA50'] = df['Close'].rolling(window=50).mean()
     df['MA200'] = df['Close'].rolling(window=200).mean()
     
@@ -102,6 +121,86 @@ def calculate_technicals(df):
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
     return df
+
+# --- AI-Powered Analyst Commentary ---
+def generate_analyst_commentary(security_data):
+    """Generates a dynamic analysis and recommendation based on the security's data."""
+    name = security_data['name']
+    is_index = 'Index' in name
+    df = security_data['df']
+    info = security_data['info']
+    
+    # Technicals
+    latest_rsi = df['RSI'].iloc[-1]
+    ma50 = df['MA50'].iloc[-1]
+    ma200 = df['MA200'].iloc[-1]
+    
+    # RSI Interpretation
+    if latest_rsi > 70:
+        rsi_view = f"The RSI is at **{latest_rsi:.2f}**, indicating the asset is in **overbought** territory. This often suggests that a bullish run may be losing momentum, and a price correction or consolidation could be imminent. Traders might see this as a signal to be cautious."
+        rsi_sentiment = "Bearish"
+    elif latest_rsi < 30:
+        rsi_view = f"The RSI is at **{latest_rsi:.2f}**, suggesting the asset is **oversold**. This can signal that a recent downtrend is exhausted, and a potential bullish reversal or bounce could be on the horizon."
+        rsi_sentiment = "Bullish"
+    else:
+        rsi_view = f"The RSI is at **{latest_rsi:.2f}**, which is in the **neutral** range. This implies a balance between buying and selling pressure, with no clear momentum signal."
+        rsi_sentiment = "Neutral"
+
+    # Trend Interpretation
+    if ma50 > ma200:
+        trend_view = f"A **'Golden Cross'** is in effect (50-day MA at ₹{ma50:,.2f} is above the 200-day MA at ₹{ma200:,.2f}). This is a classic **bullish signal**, indicating strong upward momentum and a long-term uptrend."
+        trend_sentiment = "Bullish"
+    else:
+        trend_view = f"A **'Death Cross'** has occurred (50-day MA at ₹{ma50:,.2f} is below the 200-day MA at ₹{ma200:,.2f}). This is a significant **bearish signal**, suggesting a potential for a sustained downtrend."
+        trend_sentiment = "Bearish"
+
+    # Financials View (for stocks only)
+    financials_view = ""
+    if not is_index:
+        pe = info.get('trailingPE')
+        pb = info.get('priceToBook')
+        financials_view = "<h5>Fundamental Snapshot:</h5><ul>"
+        if pe:
+            financials_view += f"<li>The **P/E Ratio of {pe:.2f}** suggests how the market values the company's earnings. A high P/E can indicate high growth expectations, while a low P/E might suggest it's undervalued or facing challenges.</li>"
+        else:
+             financials_view += "<li>P/E Ratio is not available, which may warrant further investigation into earnings reports.</li>"
+        if pb:
+            financials_view += f"<li>The **P/B Ratio of {pb:.2f}** compares the market value to the company's book value. It provides a sense of whether the stock is priced fairly in relation to its net assets.</li>"
+        financials_view += "</ul>"
+
+    # Final Recommendation
+    sentiments = [rsi_sentiment, trend_sentiment]
+    if sentiments.count("Bullish") == 2:
+        final_take = "The technical indicators are strongly aligned, presenting a **clear bullish outlook**. The primary trend is up, and while short-term pullbacks are possible, the path of least resistance appears to be upward."
+        strategy = "A **Protective Put** would act as insurance against unexpected negative shocks rather than a bet on a downturn. Speculatively, this environment is more favorable for **call options** or buying the underlying asset."
+    elif sentiments.count("Bearish") == 2:
+        final_take = "With both momentum and trend indicators pointing downwards, the outlook is decidedly **bearish**. Caution is strongly advised as there is a heightened risk of further price declines."
+        strategy = "This is a prime scenario for a **Protective Put** to hedge existing holdings. The cost of the put (premium) serves to protect against significant potential losses. Speculating on further downside via puts could also be considered."
+    elif "Bearish" in sentiments and "Bullish" in sentiments:
+        final_take = "The indicators are sending **conflicting signals**, suggesting market uncertainty. The long-term trend may be bullish, but short-term momentum is weak (or vice-versa). This indicates a potential for volatility."
+        strategy = "Hedging with a **Protective Put** is a prudent move in such an uncertain environment to protect against a sudden move in either direction. The choice of strike price becomes critical."
+    else: # Neutral signals
+        final_take = "The current technical picture is **neutral and indecisive**. The asset appears to be in a consolidation phase without a strong directional bias."
+        strategy = "A **Protective Put** can be used to define your risk if you are holding the asset, but there's no strong technical reason to expect a major price move. It's a time for patience and waiting for a clearer signal to emerge."
+
+    # Assemble the commentary
+    commentary = f"""
+    <div class="analyst-card">
+        <h4>🔍 Analyst's View on {name}</h4>
+        <p>Here is a breakdown of the key signals and what they mean from an analytical perspective.</p>
+        <hr>
+        <h5>Technical Analysis:</h5>
+        <ul>
+            <li><b>Trend Analysis:</b> {trend_view}</li>
+            <li><b>Momentum Analysis:</b> {rsi_view}</li>
+        </ul>
+        {financials_view}
+        <h5>Strategic Recommendation:</h5>
+        <p><b>Overall Outlook:</b> {final_take}</p>
+        <p><b>Hedging vs. Speculation:</b> {strategy}</p>
+    </div>
+    """
+    return commentary
 
 # --- UI Rendering Functions ---
 def render_payoff_chart(price_range, stock_pl, hedged_pl, asset_to_hedge, selected_asset_price, strike_price):
@@ -138,17 +237,17 @@ with st.sidebar:
         "Reliance": "RELIANCE.NS", 
         "Infosys": "INFY.NS", 
         "HDFC Bank": "HDFCBANK.NS",
-        "Nifty 50 Index": "^NSEI"
+        "Nifty Auto Index": "^CNXAUTO"
     }
     
     shares_input = {}
     for name in TICKER_MAP.keys():
-        label = f"Units of {name}" if name == "Nifty 50 Index" else f"Shares of {name}"
+        label = f"Units of {name}" if 'Index' in name else f"Shares of {name}"
         shares_input[name] = st.number_input(label, min_value=0, value=50, key=f"{name}_sh")
 
 # --- Main Page ---
 st.title("Live Comprehensive Hedging Dashboard")
-st.markdown("An integrated dashboard for hedging analysis, combining financial and technical data.")
+st.markdown("An integrated dashboard for hedging analysis, combining financial and technical data with an AI-powered analyst perspective.")
 
 market_data = get_market_data(list(TICKER_MAP.values()))
 
@@ -157,19 +256,26 @@ if market_data is not None:
         # --- Data Processing ---
         securities = {}
         for name, ticker in TICKER_MAP.items():
-            df = market_data['Close'][ticker].dropna().to_frame('Close')
+            # Handle multi-level columns from yfinance
+            if isinstance(market_data.columns, pd.MultiIndex):
+                df_close = market_data['Close'][ticker]
+            else:
+                df_close = market_data[ticker] if ticker in market_data.columns else pd.Series(dtype=float)
+
+            df = df_close.dropna().to_frame('Close')
             info = get_stock_info(ticker) if 'Index' not in name else {}
+            
             securities[name] = {
+                'name': name,
                 'ticker': ticker,
-                'df': calculate_technicals(df),
-                'latest_price': df['Close'].iloc[-1],
+                'df': calculate_technicals(df.copy()),
+                'latest_price': df['Close'].iloc[-1] if not df.empty else 0,
                 'shares': shares_input[name],
                 'info': info,
             }
 
         # --- Portfolio Overview ---
         st.subheader("📊 Portfolio Snapshot")
-        # Exclude index from total portfolio value calculation
         stock_securities = {k: v for k, v in securities.items() if 'Index' not in k}
         total_value = sum(data['latest_price'] * data['shares'] for data in stock_securities.values())
         
@@ -178,7 +284,7 @@ if market_data is not None:
             with cols[i]:
                 st.markdown(f"<div class='metric-card'><h5>{name}</h5><p>₹{data['latest_price']:,.2f}</p></div>", unsafe_allow_html=True)
         with cols[len(securities)]:
-             st.markdown(f"<div class='metric-card portfolio'><h5>Stock Portfolio Value</h5><p>₹{total_value:,.2f}</p></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='metric-card portfolio'><h5>Stock Portfolio Value</h5><p>₹{total_value:,.2f}</p></div>", unsafe_allow_html=True)
         
         st.markdown("<hr>", unsafe_allow_html=True)
 
@@ -203,75 +309,17 @@ if market_data is not None:
             hedged_pl = stock_pl + put_pl
             
             render_payoff_chart(price_range, stock_pl, hedged_pl, asset_to_analyze, selected_asset['latest_price'], strike_price)
+            st.info("This chart shows your potential profit or loss. The green 'Hedged P&L' line demonstrates how the put option limits your downside risk, creating a 'floor' for your investment.")
+
 
         with tab2:
             st.subheader(f"Technical & Financial Overview for {asset_to_analyze}")
             render_technical_chart(selected_asset['df'], asset_to_analyze)
             
-            st.markdown("---")
-            tech_cols = st.columns(3)
-            
-            with tech_cols[0]:
-                st.markdown("<h5>Key Financial Ratios</h5>", unsafe_allow_html=True)
-                if 'Index' not in asset_to_analyze:
-                    st.metric("P/E Ratio", f"{selected_asset['info'].get('trailingPE', 'N/A'):.2f}" if selected_asset['info'].get('trailingPE') else "N/A")
-                    st.metric("P/B Ratio", f"{selected_asset['info'].get('priceToBook', 'N/A'):.2f}" if selected_asset['info'].get('priceToBook') else "N/A")
-                    st.metric("Dividend Yield", f"{selected_asset['info'].get('dividendYield', 0) * 100:.2f}%")
-                else:
-                    st.info("Financial ratios are not applicable for indices.")
+            # Generate and display the dynamic analyst commentary
+            analyst_view = generate_analyst_commentary(selected_asset)
+            st.markdown(analyst_view, unsafe_allow_html=True)
 
-            with tech_cols[1]:
-                st.markdown("<h5>Momentum Indicator</h5>", unsafe_allow_html=True)
-                latest_rsi = selected_asset['df']['RSI'].iloc[-1]
-                st.metric("Relative Strength Index (RSI)", f"{latest_rsi:.2f}")
-                if latest_rsi > 70: rsi_text = "Overbought (Potential for pullback)"
-                elif latest_rsi < 30: rsi_text = "Oversold (Potential for bounce)"
-                else: rsi_text = "Neutral"
-                st.info(rsi_text)
-
-            with tech_cols[2]:
-                st.markdown("<h5>Trend Analysis</h5>", unsafe_allow_html=True)
-                ma50 = selected_asset['df']['MA50'].iloc[-1]
-                ma200 = selected_asset['df']['MA200'].iloc[-1]
-                st.metric("50-Day Moving Average", f"₹{ma50:,.2f}")
-                st.metric("200-Day Moving Average", f"₹{ma200:,.2f}")
-                if ma50 > ma200: trend_text = "Bullish Trend (Golden Cross)"
-                else: trend_text = "Bearish Trend (Death Cross)"
-                st.info(trend_text)
-
-        # --- Strategy Recommendation Section ---
-        st.markdown("<hr>", unsafe_allow_html=True)
-        st.subheader("📝 Strategy Recommendation")
-        recommendation_card = f"""
-        <div class="card">
-            <h4>Comparing Contract Durations</h4>
-            <p>Your choice of contract duration depends on your market outlook and risk tolerance. Use the technical and financial analysis above to form a view.</p>
-            <hr style="margin: 15px 0;">
-            <div style="display: flex; gap: 20px; align-items: stretch;">
-                <div style="flex: 1; padding: 20px; background-color: #F8F9F9; border-radius: 8px; border: 1px solid #EAECEE;">
-                    <h5>For a 1-Month Contract (Short-Term)</h5>
-                    <p style="font-size: 14px;">A one-month contract is a tactical, short-term hedge. It's cheaper but offers protection for a limited time.</p>
-                    <ul>
-                        <li><strong>Use Case:</strong> Ideal if you anticipate short-term volatility or a specific event (e.g., earnings report) might cause a sharp, temporary drop.</li>
-                        <li><strong>Consideration:</strong> If the asset's price doesn't fall within the month, the premium is lost.</li>
-                    </ul>
-                </div>
-                <div style="flex: 1; padding: 20px; background-color: #F8F9F9; border-radius: 8px; border: 1px solid #EAECEE;">
-                    <h5>For a 2-Month+ Contract (Medium-Term)</h5>
-                    <p style="font-size: 14px;">A longer contract provides protection for an extended period but comes at a higher premium due to increased time value.</p>
-                    <ul>
-                        <li><strong>Use Case:</strong> Suitable if you believe there are broader market headwinds or if the technical trend (e.g., a "Death Cross") suggests a prolonged downturn.</li>
-                        <li><strong>Consideration:</strong> The higher cost will eat more into potential profits if the asset's price rises.</li>
-                    </ul>
-                </div>
-            </div>
-            <br>
-            <div style="background-color: #e1f5fe; border-left: 5px solid #03a9f4; padding: 15px; border-radius: 8px;">
-                <p style="margin:0; font-size: 15px;"><strong>Final Takeaway:</strong> If technicals and financials look weak, a longer-term hedge might be prudent despite the cost. If they look strong, a shorter, cheaper hedge could serve as a sufficient "just-in-case" insurance policy.</p>
-            </div>
-        </div>
-        """
-        st.markdown(recommendation_card, unsafe_allow_html=True)
 
     except Exception as e:
         st.error(f"An error occurred during analysis: {e}. This might be due to issues with fetching data or unexpected data formats. Please try again later.")
