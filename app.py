@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 st.set_page_config(
     layout="wide",
     page_title="HedgeX | Live Protective Put Analysis",
-    page_icon="�️"
+    page_icon="🛡️"
 )
 
 # --- Custom CSS for Professional UI ---
@@ -254,26 +254,38 @@ if market_data is not None and not market_data.empty:
                     </div>
                     """, unsafe_allow_html=True)
 
-            # 3. Final Recommendation
-            st.markdown(f"""
+            # 3. Final Recommendation - NEW LAYOUT
+            recommendation_card = f"""
             <div class="card">
                 <h4>Strategy Recommendation</h4>
                 <p>Given the recent <strong>{trend} trend</strong> in the Nifty Auto Index, your approach to hedging should be considered accordingly.</p>
-                
-                <h5>For a 1-Month Contract:</h5>
-                <p>A one-month contract is a short-term hedge. It's cheaper but offers protection for a limited time.
-                    <ul><li>If the market trend is <strong>downward</strong>, this is a cost-effective way to protect against immediate further declines.</li>
-                    <li>If the trend is <strong>upward</strong>, this acts as a low-cost insurance against a sudden reversal.</li></ul>
-                </p>
-
-                <h5>For a 2-Month (or longer) Contract:</h5>
-                <p>A longer contract provides protection for an extended period but comes at a higher premium due to increased time value.
-                    <ul><li>This is suitable if you anticipate volatility over the medium term, regardless of the current short-term trend.</li>
-                    <li>The higher cost provides peace of mind for a longer duration, allowing your long-term investment thesis to play out while being protected from significant downturns.</li></ul>
-                </p>
-                <p><strong>Conclusion:</strong> Compare the 'Cost of Hedge' percentage for each stock above. A lower percentage indicates a more cost-effective hedge relative to the value of the holding. In a downward trending market, prioritizing protection might be key, while in an upward market, you might opt for the most cost-effective hedge as a precaution.</p>
+                <hr style="margin: 15px 0;">
+                <div style="display: flex; gap: 20px; align-items: stretch;">
+                    <div style="flex: 1; padding: 20px; background-color: #F8F9F9; border-radius: 8px; border: 1px solid #EAECEE;">
+                        <h5>For a 1-Month Contract (Short-Term)</h5>
+                        <p style="font-size: 14px;">A one-month contract is a tactical, short-term hedge. It's cheaper but offers protection for a limited time.</p>
+                        <ul>
+                            <li><strong>In a <span style='color:red;'>downward</span> trend:</strong> A cost-effective way to protect against immediate further declines.</li>
+                            <li><strong>In an <span style='color:green;'>upward</span> trend:</strong> Acts as low-cost insurance against a sudden reversal.</li>
+                        </ul>
+                    </div>
+                    <div style="flex: 1; padding: 20px; background-color: #F8F9F9; border-radius: 8px; border: 1px solid #EAECEE;">
+                        <h5>For a 2-Month+ Contract (Medium-Term)</h5>
+                        <p style="font-size: 14px;">A longer contract provides protection for an extended period but comes at a higher premium due to increased time value.</p>
+                        <ul>
+                            <li>Suitable if you anticipate volatility over the medium term, regardless of the current short-term trend.</li>
+                            <li>The higher cost provides peace of mind, allowing your long-term investment thesis to play out while being protected.</li>
+                        </ul>
+                    </div>
+                </div>
+                <br>
+                <div style="background-color: #e1f5fe; border-left: 5px solid #03a9f4; padding: 15px; border-radius: 8px;">
+                    <p style="margin:0; font-size: 15px;"><strong>Final Takeaway:</strong> Compare the 'Cost of Hedge' percentage for each stock in the section above. A lower percentage indicates a more cost-effective hedge relative to the value of the holding. Your choice between a short or long-term contract depends on your market outlook and risk tolerance.</p>
+                </div>
             </div>
-            """, unsafe_allow_html=True)
+            """
+            st.markdown(recommendation_card, unsafe_allow_html=True)
+
 
     except Exception as e:
         st.error(f"An error occurred during analysis: {e}. This might be due to issues with fetching data or unexpected data formats.")
