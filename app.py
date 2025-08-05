@@ -134,15 +134,23 @@ with st.sidebar:
         st.write("A **Protective Put** is a hedging strategy that functions like an insurance policy, setting a floor on the potential loss of an asset while still allowing for upside gains.")
     st.markdown("---")
     st.markdown("### **Portfolio Definition**")
-    TICKER_MAP = {"Reliance": "RELIANCE.NS", "Infosys": "INFY.NS", "HDFC Bank": "HDFCBANK.NS"}
-    INDEX_TICKER = {"Nifty Auto": "^CNXAUTO"}
-    shares_input = {name: st.number_input(f"Shares of {name}", min_value=0, value=50, key=f"{name}_sh") for name in TICKER_MAP.keys()}
+    TICKER_MAP = {
+        "Reliance": "RELIANCE.NS", 
+        "Infosys": "INFY.NS", 
+        "HDFC Bank": "HDFCBANK.NS",
+        "Nifty 50 Index": "^NSEI"
+    }
+    
+    shares_input = {}
+    for name in TICKER_MAP.keys():
+        label = f"Units of {name}" if name == "Nifty 50 Index" else f"Shares of {name}"
+        shares_input[name] = st.number_input(label, min_value=0, value=50, key=f"{name}_sh")
 
 # --- Main Page ---
 st.title("Live Comprehensive Hedging Dashboard")
 st.markdown("An integrated dashboard for hedging analysis, combining financial and technical data.")
 
-market_data = get_market_data(list(TICKER_MAP.values()) + list(INDEX_TICKER.values()))
+market_data = get_market_data(list(TICKER_MAP.values()))
 
 if market_data is not None:
     try:
@@ -150,7 +158,7 @@ if market_data is not None:
         securities = {}
         for name, ticker in TICKER_MAP.items():
             df = market_data['Close'][ticker].dropna().to_frame('Close')
-            info = get_stock_info(ticker)
+            info = get_stock_info(ticker) if 'Index' not in name else {}
             securities[name] = {
                 'ticker': ticker,
                 'df': calculate_technicals(df),
@@ -158,22 +166,24 @@ if market_data is not None:
                 'shares': shares_input[name],
                 'info': info,
             }
-        df_index = market_data['Close'][INDEX_TICKER["Nifty Auto"]].dropna().to_frame('Close')
 
         # --- Portfolio Overview ---
         st.subheader("📊 Portfolio Snapshot")
-        total_value = sum(data['latest_price'] * data['shares'] for data in securities.values())
+        # Exclude index from total portfolio value calculation
+        stock_securities = {k: v for k, v in securities.items() if 'Index' not in k}
+        total_value = sum(data['latest_price'] * data['shares'] for data in stock_securities.values())
+        
         cols = st.columns(len(securities) + 1)
         for i, (name, data) in enumerate(securities.items()):
             with cols[i]:
-                st.markdown(f"<div class='metric-card'><h5>{name} Price</h5><p>₹{data['latest_price']:,.2f}</p></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='metric-card'><h5>{name}</h5><p>₹{data['latest_price']:,.2f}</p></div>", unsafe_allow_html=True)
         with cols[len(securities)]:
-            st.markdown(f"<div class='metric-card portfolio'><h5>Total Value</h5><p>₹{total_value:,.2f}</p></div>", unsafe_allow_html=True)
+             st.markdown(f"<div class='metric-card portfolio'><h5>Stock Portfolio Value</h5><p>₹{total_value:,.2f}</p></div>", unsafe_allow_html=True)
         
         st.markdown("<hr>", unsafe_allow_html=True)
 
         # --- Main Analysis Section ---
-        asset_to_analyze = st.selectbox("Select Security for Detailed Analysis:", securities.keys(), key="analyze_asset")
+        asset_to_analyze = st.selectbox("Select Security or Index for Detailed Analysis:", securities.keys(), key="analyze_asset")
         selected_asset = securities[asset_to_analyze]
         
         tab1, tab2 = st.tabs(["🛡️ Hedging Analysis", "📈 Technical & Financials"])
@@ -183,11 +193,11 @@ if market_data is not None:
             analysis_cols = st.columns([2,1,1])
             suggested_strike = float(round(selected_asset['latest_price'], -1))
             with analysis_cols[0]:
-                strike_price = st.number_input("Strike Price (K)", min_value=0.0, value=suggested_strike, step=1.0, help="The price at which you can sell the stock.")
+                strike_price = st.number_input("Strike Price (K)", min_value=0.0, value=suggested_strike, step=1.0, help="The price at which you can sell the asset.")
             with analysis_cols[1]:
-                premium = st.number_input("Premium per Share", min_value=0.0, value=selected_asset['latest_price'] * 0.025, format="%.2f", step=0.1, help="The cost of buying the put option.")
+                premium = st.number_input("Premium per Unit/Share", min_value=0.0, value=selected_asset['latest_price'] * 0.025, format="%.2f", step=0.1, help="The cost of buying the put option.")
             
-            price_range = np.linspace(selected_asset['latest_price'] * 0.70, selected_asset['latest_price'] * 1.30, 100)
+            price_range = np.linspace(selected_asset['latest_price'] * 0.85, selected_asset['latest_price'] * 1.15, 100)
             stock_pl = (price_range - selected_asset['latest_price']) * selected_asset['shares']
             put_pl = (np.maximum(strike_price - price_range, 0) - premium) * selected_asset['shares']
             hedged_pl = stock_pl + put_pl
@@ -200,12 +210,16 @@ if market_data is not None:
             
             st.markdown("---")
             tech_cols = st.columns(3)
+            
             with tech_cols[0]:
                 st.markdown("<h5>Key Financial Ratios</h5>", unsafe_allow_html=True)
-                st.metric("P/E Ratio", f"{selected_asset['info'].get('trailingPE', 'N/A'):.2f}" if selected_asset['info'].get('trailingPE') else "N/A")
-                st.metric("P/B Ratio", f"{selected_asset['info'].get('priceToBook', 'N/A'):.2f}" if selected_asset['info'].get('priceToBook') else "N/A")
-                st.metric("Dividend Yield", f"{selected_asset['info'].get('dividendYield', 0) * 100:.2f}%")
-            
+                if 'Index' not in asset_to_analyze:
+                    st.metric("P/E Ratio", f"{selected_asset['info'].get('trailingPE', 'N/A'):.2f}" if selected_asset['info'].get('trailingPE') else "N/A")
+                    st.metric("P/B Ratio", f"{selected_asset['info'].get('priceToBook', 'N/A'):.2f}" if selected_asset['info'].get('priceToBook') else "N/A")
+                    st.metric("Dividend Yield", f"{selected_asset['info'].get('dividendYield', 0) * 100:.2f}%")
+                else:
+                    st.info("Financial ratios are not applicable for indices.")
+
             with tech_cols[1]:
                 st.markdown("<h5>Momentum Indicator</h5>", unsafe_allow_html=True)
                 latest_rsi = selected_asset['df']['RSI'].iloc[-1]
@@ -227,42 +241,33 @@ if market_data is not None:
 
         # --- Strategy Recommendation Section ---
         st.markdown("<hr>", unsafe_allow_html=True)
-        st.subheader("📝 Comparative Analysis & Strategy Recommendation")
-        index_30d_change = (df_index['Close'].iloc[-1] / df_index['Close'].iloc[-30] - 1) * 100
-        trend = "upward" if index_30d_change > 0 else "downward"
-        trend_color = "green" if trend == "upward" else "red"
-        st.markdown(f"""
-        <div class="card">
-            <h4>Market Context: Nifty Auto Index</h4>
-            <p>The Nifty Auto Index has shown a <strong><span style='color:{trend_color};'>{index_30d_change:.2f}%</span></strong> change over the last 30 trading days, indicating a recent <strong>{trend} trend</strong> in the auto sector. This market sentiment is a key factor when considering hedging.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.subheader("📝 Strategy Recommendation")
         recommendation_card = f"""
         <div class="card">
-            <h4>Strategy Recommendation</h4>
-            <p>Given the recent <strong>{trend} trend</strong> in the Nifty Auto Index, your approach to hedging should be considered accordingly.</p>
+            <h4>Comparing Contract Durations</h4>
+            <p>Your choice of contract duration depends on your market outlook and risk tolerance. Use the technical and financial analysis above to form a view.</p>
             <hr style="margin: 15px 0;">
             <div style="display: flex; gap: 20px; align-items: stretch;">
                 <div style="flex: 1; padding: 20px; background-color: #F8F9F9; border-radius: 8px; border: 1px solid #EAECEE;">
                     <h5>For a 1-Month Contract (Short-Term)</h5>
                     <p style="font-size: 14px;">A one-month contract is a tactical, short-term hedge. It's cheaper but offers protection for a limited time.</p>
                     <ul>
-                        <li><strong>In a <span style='color:red;'>downward</span> trend:</strong> A cost-effective way to protect against immediate further declines.</li>
-                        <li><strong>In an <span style='color:green;'>upward</span> trend:</strong> Acts as low-cost insurance against a sudden reversal.</li>
+                        <li><strong>Use Case:</strong> Ideal if you anticipate short-term volatility or a specific event (e.g., earnings report) might cause a sharp, temporary drop.</li>
+                        <li><strong>Consideration:</strong> If the asset's price doesn't fall within the month, the premium is lost.</li>
                     </ul>
                 </div>
                 <div style="flex: 1; padding: 20px; background-color: #F8F9F9; border-radius: 8px; border: 1px solid #EAECEE;">
                     <h5>For a 2-Month+ Contract (Medium-Term)</h5>
                     <p style="font-size: 14px;">A longer contract provides protection for an extended period but comes at a higher premium due to increased time value.</p>
                     <ul>
-                        <li>Suitable if you anticipate volatility over the medium term, regardless of the current short-term trend.</li>
-                        <li>The higher cost provides peace of mind, allowing your long-term investment thesis to play out while being protected.</li>
+                        <li><strong>Use Case:</strong> Suitable if you believe there are broader market headwinds or if the technical trend (e.g., a "Death Cross") suggests a prolonged downturn.</li>
+                        <li><strong>Consideration:</strong> The higher cost will eat more into potential profits if the asset's price rises.</li>
                     </ul>
                 </div>
             </div>
             <br>
             <div style="background-color: #e1f5fe; border-left: 5px solid #03a9f4; padding: 15px; border-radius: 8px;">
-                <p style="margin:0; font-size: 15px;"><strong>Final Takeaway:</strong> Use the comprehensive analysis above to inform your decision. If technicals and financials look weak, a hedge is more critical. If they look strong, a hedge is more of a pure insurance policy.</p>
+                <p style="margin:0; font-size: 15px;"><strong>Final Takeaway:</strong> If technicals and financials look weak, a longer-term hedge might be prudent despite the cost. If they look strong, a shorter, cheaper hedge could serve as a sufficient "just-in-case" insurance policy.</p>
             </div>
         </div>
         """
@@ -273,4 +278,3 @@ if market_data is not None:
 
 else:
     st.info("🔄 Fetching live market data... Please wait. If this message persists, there may be an issue connecting to the data source.")
-
