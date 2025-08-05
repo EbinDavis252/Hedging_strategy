@@ -134,43 +134,31 @@ with st.sidebar:
         st.write("A **Protective Put** is a hedging strategy that functions like an insurance policy, setting a floor on the potential loss of an asset while still allowing for upside gains.")
     st.markdown("---")
     st.markdown("### **Portfolio Definition**")
-    EQUITY_TICKER_MAP = {
+    TICKER_MAP = {
         "Reliance": "RELIANCE.NS", 
         "Infosys": "INFY.NS", 
-        "HDFC Bank": "HDFCBANK.NS"
-    }
-    INDEX_TICKER_MAP = {
-        "Nifty 50": "^NSEI",
-        "Nifty Bank": "^NSEBANK",
-        "Nifty IT": "^CNXIT",
-        "Nifty Auto": "^CNXAUTO",
-        "Nifty Pharma": "^CNXPHARMA"
+        "HDFC Bank": "HDFCBANK.NS",
+        "Nifty 50 Index": "^NSEI"
     }
     
-    shares_input = {name: st.number_input(f"Shares of {name}", min_value=0, value=50, key=f"{name}_sh") for name in EQUITY_TICKER_MAP.keys()}
-    
-    st.markdown("---")
-    st.markdown("### **Index Selection**")
-    selected_index_name = st.selectbox("Select an Index to Analyze", INDEX_TICKER_MAP.keys())
-    shares_input[selected_index_name] = st.number_input(f"Units of {selected_index_name}", min_value=0, value=50, key=f"{selected_index_name}_sh")
-
+    shares_input = {}
+    for name in TICKER_MAP.keys():
+        label = f"Units of {name}" if name == "Nifty 50 Index" else f"Shares of {name}"
+        shares_input[name] = st.number_input(label, min_value=0, value=50, key=f"{name}_sh")
 
 # --- Main Page ---
 st.title("Live Comprehensive Hedging Dashboard")
 st.markdown("An integrated dashboard for hedging analysis, combining financial and technical data.")
 
-# Combine tickers for data fetching
-all_tickers_to_fetch = list(EQUITY_TICKER_MAP.values()) + [INDEX_TICKER_MAP[selected_index_name]]
-market_data = get_market_data(all_tickers_to_fetch)
+market_data = get_market_data(list(TICKER_MAP.values()))
 
 if market_data is not None:
     try:
         # --- Data Processing ---
         securities = {}
-        # Process Equities
-        for name, ticker in EQUITY_TICKER_MAP.items():
+        for name, ticker in TICKER_MAP.items():
             df = market_data['Close'][ticker].dropna().to_frame('Close')
-            info = get_stock_info(ticker)
+            info = get_stock_info(ticker) if 'Index' not in name else {}
             securities[name] = {
                 'ticker': ticker,
                 'df': calculate_technicals(df),
@@ -178,26 +166,18 @@ if market_data is not None:
                 'shares': shares_input[name],
                 'info': info,
             }
-        # Process Selected Index
-        index_ticker = INDEX_TICKER_MAP[selected_index_name]
-        df_index = market_data['Close'][index_ticker].dropna().to_frame('Close')
-        securities[selected_index_name] = {
-            'ticker': index_ticker,
-            'df': calculate_technicals(df_index),
-            'latest_price': df_index['Close'].iloc[-1],
-            'shares': shares_input[selected_index_name],
-            'info': {}, # No financial info for indices
-        }
 
         # --- Portfolio Overview ---
         st.subheader("📊 Portfolio Snapshot")
-        total_value = sum(data['latest_price'] * data['shares'] for name, data in securities.items() if name in EQUITY_TICKER_MAP)
+        # Exclude index from total portfolio value calculation
+        stock_securities = {k: v for k, v in securities.items() if 'Index' not in k}
+        total_value = sum(data['latest_price'] * data['shares'] for data in stock_securities.values())
         
-        cols = st.columns(len(EQUITY_TICKER_MAP) + 1)
-        for i, name in enumerate(EQUITY_TICKER_MAP.keys()):
+        cols = st.columns(len(securities) + 1)
+        for i, (name, data) in enumerate(securities.items()):
             with cols[i]:
-                st.markdown(f"<div class='metric-card'><h5>{name}</h5><p>₹{securities[name]['latest_price']:,.2f}</p></div>", unsafe_allow_html=True)
-        with cols[len(EQUITY_TICKER_MAP)]:
+                st.markdown(f"<div class='metric-card'><h5>{name}</h5><p>₹{data['latest_price']:,.2f}</p></div>", unsafe_allow_html=True)
+        with cols[len(securities)]:
              st.markdown(f"<div class='metric-card portfolio'><h5>Stock Portfolio Value</h5><p>₹{total_value:,.2f}</p></div>", unsafe_allow_html=True)
         
         st.markdown("<hr>", unsafe_allow_html=True)
@@ -244,10 +224,10 @@ if market_data is not None:
                 st.markdown("<h5>Momentum Indicator</h5>", unsafe_allow_html=True)
                 latest_rsi = selected_asset['df']['RSI'].iloc[-1]
                 st.metric("Relative Strength Index (RSI)", f"{latest_rsi:.2f}")
-                if latest_rsi > 70: rsi_text = "Overbought"
-                elif latest_rsi < 30: rsi_text = "Oversold"
+                if latest_rsi > 70: rsi_text = "Overbought (Potential for pullback)"
+                elif latest_rsi < 30: rsi_text = "Oversold (Potential for bounce)"
                 else: rsi_text = "Neutral"
-                st.info(f"RSI suggests the asset is in a **{rsi_text}** state.")
+                st.info(rsi_text)
 
             with tech_cols[2]:
                 st.markdown("<h5>Trend Analysis</h5>", unsafe_allow_html=True)
@@ -257,7 +237,7 @@ if market_data is not None:
                 st.metric("200-Day Moving Average", f"₹{ma200:,.2f}")
                 if ma50 > ma200: trend_text = "Bullish Trend (Golden Cross)"
                 else: trend_text = "Bearish Trend (Death Cross)"
-                st.info(f"The MAs indicate a **{trend_text}**.")
+                st.info(trend_text)
 
         # --- Strategy Recommendation Section ---
         st.markdown("<hr>", unsafe_allow_html=True)
@@ -265,7 +245,7 @@ if market_data is not None:
         recommendation_card = f"""
         <div class="card">
             <h4>Comparing Contract Durations</h4>
-            <p>Your choice of contract duration depends on your market outlook and risk tolerance. Use the technical and financial analysis above to form a view on <strong>{asset_to_analyze}</strong>.</p>
+            <p>Your choice of contract duration depends on your market outlook and risk tolerance. Use the technical and financial analysis above to form a view.</p>
             <hr style="margin: 15px 0;">
             <div style="display: flex; gap: 20px; align-items: stretch;">
                 <div style="flex: 1; padding: 20px; background-color: #F8F9F9; border-radius: 8px; border: 1px solid #EAECEE;">
@@ -287,7 +267,7 @@ if market_data is not None:
             </div>
             <br>
             <div style="background-color: #e1f5fe; border-left: 5px solid #03a9f4; padding: 15px; border-radius: 8px;">
-                <p style="margin:0; font-size: 15px;"><strong>Final Takeaway:</strong> If technicals and financials for {asset_to_analyze} look weak, a longer-term hedge might be prudent despite the cost. If they look strong, a shorter, cheaper hedge could serve as a sufficient "just-in-case" insurance policy.</p>
+                <p style="margin:0; font-size: 15px;"><strong>Final Takeaway:</strong> If technicals and financials look weak, a longer-term hedge might be prudent despite the cost. If they look strong, a shorter, cheaper hedge could serve as a sufficient "just-in-case" insurance policy.</p>
             </div>
         </div>
         """
