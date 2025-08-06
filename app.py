@@ -170,12 +170,22 @@ def generate_strategy_report(portfolio_value, beta, hedge_params):
         """, unsafe_allow_html=True)
 
 # --- UI Rendering Functions ---
-def render_payoff_chart(price_range, pnl, hedged_pnl, title, xaxis_title, legend_pnl, legend_hedged):
-    """A more generic payoff chart renderer."""
+def render_payoff_chart(price_range, pnl, hedged_pnl, title, xaxis_title, legend_pnl, legend_hedged, breakeven_point=None, max_loss=None):
+    """A more generic payoff chart renderer with annotations."""
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=price_range, y=pnl, mode='lines', name=legend_pnl, line=dict(color='#E74C3C', dash='dash', width=2)))
     fig.add_trace(go.Scatter(x=price_range, y=hedged_pnl, mode='lines', name=legend_hedged, line=dict(color='#2ECC71', width=3)))
     fig.add_hline(y=0, line_width=1, line_color="black")
+    
+    # Add annotations for breakeven and max loss
+    if breakeven_point is not None:
+        fig.add_vline(x=breakeven_point, line_width=1.5, line_dash="dot", line_color="#3498DB", 
+                      annotation_text=f"Breakeven: {breakeven_point:,.2f}", annotation_position="top left")
+    
+    if max_loss is not None:
+        fig.add_hline(y=-max_loss, line_width=1.5, line_dash="dot", line_color="#E74C3C",
+                      annotation_text=f"Max Loss: {-max_loss:,.2f}", annotation_position="bottom right")
+
     fig.update_layout(title=f"<b>{title}</b>", xaxis_title=xaxis_title, yaxis_title="Profit / Loss (₹)", legend=dict(yanchor="top", y=0.98, xanchor="left", x=0.01))
     st.plotly_chart(fig, use_container_width=True)
 
@@ -250,8 +260,12 @@ if market_data is not None:
                     stock_pnl = (price_range - data['latest_price']) * data['shares']
                     put_pnl = (np.maximum(direct_k - price_range, 0) - direct_p) * data['shares']
                     hedged_pnl = stock_pnl + put_pnl
-                    
-                    render_payoff_chart(price_range, stock_pnl, hedged_pnl, f"Direct Hedge on {name}", f"{name} Price at Expiry", "Unhdged P&L", "Hedged P&L")
+
+                    # Calculate breakeven and max loss for direct hedge
+                    breakeven_direct = data['latest_price'] + direct_p
+                    max_loss_direct = (data['latest_price'] - direct_k + direct_p) * data['shares'] if data['latest_price'] > direct_k else direct_p * data['shares']
+
+                    render_payoff_chart(price_range, stock_pnl, hedged_pnl, f"Direct Hedge on {name}", f"{name} Price at Expiry", "Unhdged P&L", "Hedged P&L", breakeven_point=breakeven_direct, max_loss=max_loss_direct)
                 
                 with col2:
                     st.markdown("**Strategy Recommendation**")
@@ -278,19 +292,28 @@ if market_data is not None:
                 p1 = st.number_input("Premium (1-Mo)", value=nifty_auto_data['latest_price'] * 0.015, format="%.2f", key="p1")
                 
                 index_price_range = np.linspace(nifty_auto_data['latest_price'] * 0.85, nifty_auto_data['latest_price'] * 1.15, 100)
-                portfolio_change = (index_price_range - nifty_auto_data['latest_price']) * hedge_units * beta
+                portfolio_change = (index_price_range / nifty_auto_data['latest_price'] - 1) * portfolio_value * beta
                 put_pnl1 = (np.maximum(k1 - index_price_range, 0) - p1) * hedge_units
                 hedged_pnl1 = portfolio_change + put_pnl1
-                render_payoff_chart(index_price_range, portfolio_change, hedged_pnl1, "1-Month Hedge Payoff", "Nifty Auto Price at Expiry", "Unhedged Portfolio P&L", "Hedged P&L (1-Mo)")
+                
+                breakeven_cross_1 = nifty_auto_data['latest_price'] + (p1 / beta) if beta !=0 else float('inf')
+                max_loss_cross_1 = (p1 * hedge_units) - ((nifty_auto_data['latest_price'] - k1) * hedge_units * beta)
+
+                render_payoff_chart(index_price_range, portfolio_change, hedged_pnl1, "1-Month Hedge Payoff", "Nifty Auto Price at Expiry", "Unhedged Portfolio P&L", "Hedged P&L (1-Mo)", breakeven_point=breakeven_cross_1, max_loss=max_loss_cross_1)
 
             with col2:
                 st.markdown("##### 2-Month Contract")
                 k2 = st.number_input("Strike Price (2-Mo)", value=float(round(nifty_auto_data['latest_price'] * 0.98, -2)), step=50.0, key="k2")
                 p2 = st.number_input("Premium (2-Mo)", value=nifty_auto_data['latest_price'] * 0.025, format="%.2f", key="p2")
                 
+                portfolio_change_2 = (index_price_range / nifty_auto_data['latest_price'] - 1) * portfolio_value * beta
                 put_pnl2 = (np.maximum(k2 - index_price_range, 0) - p2) * hedge_units
-                hedged_pnl2 = portfolio_change + put_pnl2
-                render_payoff_chart(index_price_range, portfolio_change, hedged_pnl2, "2-Month Hedge Payoff", "Nifty Auto Price at Expiry", "Unhedged Portfolio P&L", "Hedged P&L (2-Mo)")
+                hedged_pnl2 = portfolio_change_2 + put_pnl2
+
+                breakeven_cross_2 = nifty_auto_data['latest_price'] + (p2 / beta) if beta !=0 else float('inf')
+                max_loss_cross_2 = (p2 * hedge_units) - ((nifty_auto_data['latest_price'] - k2) * hedge_units * beta)
+
+                render_payoff_chart(index_price_range, portfolio_change_2, hedged_pnl2, "2-Month Hedge Payoff", "Nifty Auto Price at Expiry", "Unhedged Portfolio P&L", "Hedged P&L (2-Mo)", breakeven_point=breakeven_cross_2, max_loss=max_loss_cross_2)
 
         with tab_report:
             if 'k1' in st.session_state and 'p1' in st.session_state and 'k2' in st.session_state and 'p2' in st.session_state:
