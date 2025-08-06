@@ -94,7 +94,8 @@ def calculate_portfolio_beta(portfolio_securities, index_df):
 
 # --- Analyst Commentary & Report Generation ---
 def generate_analyst_commentary(security_data):
-    """Generates a dynamic analysis for a single security."""
+    """Generates a dynamic analysis for a single security with specific recommendations."""
+    name = security_data['name']
     df = security_data['df']
     if df.empty or 'RSI' not in df.columns or df['RSI'].isnull().all():
         return {
@@ -111,10 +112,20 @@ def generate_analyst_commentary(security_data):
     if ma50 > ma200: trend_view, trend_sentiment = f"A **'Golden Cross'** is in effect (50-day MA > 200-day MA), a classic bullish signal.", "Bullish"
     else: trend_view, trend_sentiment = f"A **'Death Cross'** has occurred (50-day MA < 200-day MA), a bearish signal.", "Bearish"
     sentiments = [rsi_sentiment, trend_sentiment]
-    if sentiments.count("Bullish")==2: sentiment, final_take, strategy = "Strongly Bullish", "Outlook is clearly bullish.", "Favorable for calls or buying."
-    elif sentiments.count("Bearish")==2: sentiment, final_take, strategy = "Strongly Bearish", "Outlook is decidedly bearish.", "Prime scenario for puts."
-    elif "Bearish" in sentiments and "Bullish" in sentiments: sentiment, final_take, strategy = "Mixed", "Conflicting signals suggest uncertainty.", "Prudent to hedge with puts."
-    else: sentiment, final_take, strategy = "Neutral", "Indecisive; consolidation phase.", "Patience is key; hedge to define risk."
+
+    if sentiments.count("Bullish")==2:
+        sentiment, final_take = "Strongly Bullish", "Outlook is clearly bullish."
+        strategy = f"**Primary Strategy:** Consider buying the underlying stock or **Call Options on {name}** to participate in the upward trend.\n\n**Hedging:** A protective put can be used as low-cost insurance against unexpected shocks."
+    elif sentiments.count("Bearish")==2:
+        sentiment, final_take = "Strongly Bearish", "Outlook is decidedly bearish."
+        strategy = f"**Hedge Instrument:** Buy **Put Options on {name}**. This is a prime scenario to protect your holdings against a potential drop in price."
+    elif "Bearish" in sentiments and "Bullish" in sentiments:
+        sentiment, final_take = "Mixed", "Conflicting signals suggest uncertainty."
+        strategy = f"**Hedge Instrument:** Consider buying **Put Options on {name}**. This will act as valuable insurance against downside volatility in an uncertain market."
+    else: # Neutral
+        sentiment, final_take = "Neutral", "Indecisive; consolidation phase."
+        strategy = f"**Hedge Instrument:** A **Protective Put on {name}** can be used to define your maximum risk while waiting for a clearer market direction."
+
     return {"trend_view": trend_view, "rsi_view": rsi_view, "final_take": final_take, "strategy": strategy, "overall_sentiment": sentiment}
 
 def generate_strategy_report(portfolio_value, beta, hedge_params):
